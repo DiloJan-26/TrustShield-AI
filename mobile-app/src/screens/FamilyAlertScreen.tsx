@@ -1,5 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { EvidenceList } from "../components/EvidenceList";
 import { analyzeMockMessage } from "../services/mockAnalysisService";
 import { sharedStyles } from "./sharedStyles";

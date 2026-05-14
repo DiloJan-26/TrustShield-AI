@@ -68,7 +68,10 @@ export function analyzeMockMessage(text: string): TrustShieldResult {
   }
 
   if (hasSuspiciousSignals) {
-    const topEvidence = evidence.length > 0 ? evidence : ["Message asks the user to take action through a link or payment"];
+    const topEvidence =
+      evidence.length > 0
+        ? evidence
+        : ["Message asks the user to take action through a link or payment"];
 
     return {
       risk_level: "suspicious",

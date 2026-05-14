@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { EvidenceList } from "../components/EvidenceList";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { RiskBadge } from "../components/RiskBadge";

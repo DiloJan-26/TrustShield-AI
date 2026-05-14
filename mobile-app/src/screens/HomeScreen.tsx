@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { sharedStyles } from "./sharedStyles";
 
@@ -16,7 +17,9 @@ export function HomeScreen() {
         <View style={sharedStyles.card}>
           <Text style={sharedStyles.cardTitle}>Protection</Text>
           {protectionItems.map((item) => (
-            <Text key={item} style={styles.item}>✓ {item}</Text>
+            <Text key={item} style={styles.item}>
+              ✓ {item}
+            </Text>
           ))}
         </View>
 

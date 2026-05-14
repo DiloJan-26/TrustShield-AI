@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start --dev-client --localhost",
-    "dev:phone": "adb reverse tcp:8081 tcp:8081 && expo start --dev-client --localhost",
-    "android": "expo run:android",
+    "start:usb": "adb reverse tcp:8081 tcp:8081 && expo start --dev-client --localhost --clear",
+    "dev:phone": "adb reverse tcp:8081 tcp:8081 && expo start --dev-client --localhost --clear",
+    "android": "adb reverse tcp:8081 tcp:8081 && expo run:android --no-bundler",
+    "android:lan": "expo run:android",
     "lint": "expo lint"
   },
   "dependencies": {
@@ -13,8 +15,11 @@
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.21",
+    "expo-file-system": "~19.0.22",
+    "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",
+    "expo-sharing": "~14.0.8",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",
