@@ -5,13 +5,15 @@ import { EvidenceList } from "../components/EvidenceList";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { RiskBadge } from "../components/RiskBadge";
 import { analyzeMockMessage } from "../services/mockAnalysisService";
+import { extractScamSignals } from "../services/scamSignalExtractor";
 import { sharedStyles } from "./sharedStyles";
 
 export function ResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string }>();
   const messageText = typeof params.text === "string" ? params.text : "";
-  const result = analyzeMockMessage(messageText);
+  const signalResult = extractScamSignals(messageText);
+  const result = analyzeMockMessage(messageText, signalResult);
   const isRisky = result.risk_level !== "safe";
 
   return (
