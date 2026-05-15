@@ -36,6 +36,13 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# local model files
+*.litertlm
+models/*.litertlm
+mobile-app/models/*.litertlm
+*.gguf
+models/*.gguf
+
 app-example
 
 # generated native folders

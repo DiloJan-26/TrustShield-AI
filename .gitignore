@@ -3,3 +3,8 @@
 0.overallworkflow.md
 2.task2.md
 trustshield_dataset_final_validation_summary_v1.json
+*.litertlm
+models/*.litertlm
+mobile-app/models/*.litertlm
+*.gguf
+models/*.gguf

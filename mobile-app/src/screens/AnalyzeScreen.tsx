@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { demoMessages } from "../data/demoMessages";
 import { recognizeText } from "../native/TrustShieldOCR";
+import { analyzeWithTrustShieldModel } from "../services/model/trustShieldModelClient";
 import { extractScamSignals, type BaseRisk } from "../services/scamSignalExtractor";
 import { colors, sharedStyles } from "./sharedStyles";
 
@@ -33,13 +34,43 @@ export function AnalyzeScreen() {
   const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
   const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const signalResult = useMemo(() => extractScamSignals(text), [text]);
   const gateStyle = riskColors[signalResult.base_risk];
 
-  function analyze() {
+  async function analyze() {
     const message = text.trim();
     if (!message) return;
-    router.push({ pathname: "/result", params: { text: message } } as never);
+
+    setIsAnalyzing(true);
+    setAnalysisError("");
+    try {
+      const modelResult = await analyzeWithTrustShieldModel({
+        ocr_text: message,
+        detected_urls: signalResult.urls,
+        detected_signals: signalResult.signals,
+        base_risk: signalResult.base_risk,
+        evidence: signalResult.evidence,
+        scam_type_hint: signalResult.scam_type_hint,
+      });
+
+      router.push({
+        pathname: "/result",
+        params: {
+          text: message,
+          result: JSON.stringify({
+            ...modelResult,
+            tamil_warning: "",
+          }),
+        },
+      } as never);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "TrustShield analysis failed.";
+      setAnalysisError(errorMessage);
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   async function pickScreenshot() {
@@ -121,7 +152,7 @@ export function AnalyzeScreen() {
             <View style={styles.signalWrap}>
               {signalResult.signals.map((signal) => (
                 <View key={signal} style={styles.signalChip}>
-                  <Text style={styles.signalText}>✓ {signal}</Text>
+                  <Text style={styles.signalText}>Signal: {signal}</Text>
                 </View>
               ))}
             </View>
@@ -144,10 +175,11 @@ export function AnalyzeScreen() {
         </View>
 
         <PrimaryButton
-          title="Analyze with TrustShield AI"
+          title={isAnalyzing ? "Analyzing..." : "Analyze with TrustShield AI"}
           onPress={analyze}
-          disabled={!text.trim() || isOcrLoading}
+          disabled={!text.trim() || isOcrLoading || isAnalyzing}
         />
+        {analysisError ? <Text style={styles.errorText}>{analysisError}</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
