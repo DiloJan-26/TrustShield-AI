@@ -1,4 +1,6 @@
-export type ModelMode = "mock" | "base_gemma" | "finetuned_gemma";
+export type ModelMode = "mock" | "base_gemma";
+
+export type ModelSource = "mock" | "base_gemma" | "local_fallback";
 
 export type TrustShieldModelInput = {
   ocr_text: string;
@@ -17,4 +19,7 @@ export type TrustShieldModelOutput = {
   simple_warning: string;
   safe_action: string;
   family_alert: string;
+  model_source?: ModelSource;
+  latency_ms?: number;
+  raw_model_output?: string;
 };

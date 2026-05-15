@@ -1,9 +1,21 @@
-import { useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { generate as generateGemma, initialize as initializeGemma } from "../native/TrustShieldGemma";
-import { BASE_GEMMA_MODEL_PATH } from "../services/model/modelConfig";
+import {
+  BASE_GEMMA_MODEL_PATH,
+  disableGemmaRuntime,
+  getGemmaRuntimeState,
+  getTrustShieldModelMode,
+  getTrustShieldModelModeLabel,
+  markGemmaRuntimeError,
+  markGemmaRuntimeReady,
+  setGemmaRuntimeTestResult,
+  setTrustShieldModelMode,
+} from "../services/model/modelConfig";
+import type { ModelMode } from "../services/model/modelTypes";
 import { sharedStyles } from "./sharedStyles";
 
 const settings = [
@@ -14,20 +26,40 @@ const settings = [
 ];
 
 const modelSettings = [
-  ["Model mode", "Mock Safety Mode"],
-  ["Base Gemma 4 E2B", "Coming next"],
+  ["Base Gemma 4 E2B", "Available after initialization"],
   ["Fine-tuned Gemma 4 E2B", "Coming later"],
   ["No cloud AI", "ON"],
 ];
 
 export function SettingsScreen() {
-  const [gemmaStatus, setGemmaStatus] = useState("Not initialized");
-  const [gemmaMessage, setGemmaMessage] = useState("");
+  const [modelMode, setModelMode] = useState<ModelMode>(getTrustShieldModelMode());
+  const initialRuntime = getGemmaRuntimeState();
+  const [gemmaStatus, setGemmaStatus] = useState(initialRuntime.ready ? "Ready" : "Not initialized");
+  const [gemmaMessage, setGemmaMessage] = useState(initialRuntime.message);
   const [isInitializingGemma, setIsInitializingGemma] = useState(false);
   const [isTestingGemma, setIsTestingGemma] = useState(false);
-  const [gemmaResponse, setGemmaResponse] = useState("");
-  const [gemmaLatency, setGemmaLatency] = useState<number | null>(null);
+  const [gemmaResponse, setGemmaResponse] = useState(initialRuntime.response);
+  const [gemmaLatency, setGemmaLatency] = useState<number | null>(initialRuntime.latency);
   const isGemmaReady = gemmaStatus === "Ready";
+
+  const refreshRuntimeState = useCallback(() => {
+    const runtime = getGemmaRuntimeState();
+    setModelMode(getTrustShieldModelMode());
+    setGemmaStatus(runtime.ready ? "Ready" : "Not initialized");
+    setGemmaMessage(runtime.message);
+    setGemmaResponse(runtime.response);
+    setGemmaLatency(runtime.latency);
+  }, []);
+
+  useFocusEffect(refreshRuntimeState);
+
+  function chooseModelMode(mode: ModelMode) {
+    setTrustShieldModelMode(mode);
+    setModelMode(mode);
+    if (mode === "base_gemma" && !isGemmaReady) {
+      setGemmaMessage("Initialize Gemma 4 E2B before using model analysis.");
+    }
+  }
 
   async function initializeBaseGemma() {
     setIsInitializingGemma(true);
@@ -39,14 +71,25 @@ export function SettingsScreen() {
     try {
       const result = await initializeGemma(BASE_GEMMA_MODEL_PATH);
       setGemmaStatus(result.ready ? "Ready" : "Error");
-      setGemmaMessage(result.modelPath ? `${result.message}: ${result.modelPath}` : result.message);
+      const message = result.modelPath ? `${result.message}: ${result.modelPath}` : result.message;
+      setGemmaMessage(message);
+      if (result.ready) {
+        markGemmaRuntimeReady(message);
+        setModelMode("base_gemma");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error checking Gemma model.";
       setGemmaStatus("Error");
       setGemmaMessage(message);
+      markGemmaRuntimeError(message);
     } finally {
       setIsInitializingGemma(false);
     }
+  }
+
+  function disableGemma() {
+    disableGemmaRuntime();
+    refreshRuntimeState();
   }
 
   async function testGemma() {
@@ -61,9 +104,11 @@ export function SettingsScreen() {
       const result = await generateGemma(testPrompt, { maxTokens: 128, temperature: 0.1 });
       setGemmaResponse(result.text);
       setGemmaLatency(result.latency_ms);
+      setGemmaRuntimeTestResult(result.text, result.latency_ms);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Gemma test generation failed.";
       setGemmaResponse(`Error: ${message}`);
+      setGemmaRuntimeTestResult(`Error: ${message}`, null);
     } finally {
       setIsTestingGemma(false);
     }
@@ -83,6 +128,20 @@ export function SettingsScreen() {
         </View>
         <View style={sharedStyles.card}>
           <Text style={sharedStyles.cardTitle}>Model</Text>
+          <View style={styles.row}>
+            <Text style={styles.label}>Current reasoning mode</Text>
+            <Text style={styles.value}>{getTrustShieldModelModeLabel(modelMode)}</Text>
+          </View>
+          <PrimaryButton
+            title="Use Mock Safety Mode"
+            onPress={() => chooseModelMode("mock")}
+            variant={modelMode === "mock" ? "primary" : "secondary"}
+          />
+          <PrimaryButton
+            title="Use Base Gemma 4 E2B"
+            onPress={() => chooseModelMode("base_gemma")}
+            variant={modelMode === "base_gemma" ? "primary" : "secondary"}
+          />
           {modelSettings.map(([label, value]) => (
             <View key={label} style={styles.row}>
               <Text style={styles.label}>{label}</Text>
@@ -112,6 +171,12 @@ export function SettingsScreen() {
             onPress={testGemma}
             variant="secondary"
             disabled={!isGemmaReady || isInitializingGemma || isTestingGemma}
+          />
+          <PrimaryButton
+            title="Disable Gemma / Use Mock Safety Mode"
+            onPress={disableGemma}
+            variant="danger"
+            disabled={isInitializingGemma || isTestingGemma}
           />
           {gemmaMessage ? <Text style={styles.status}>{gemmaMessage}</Text> : null}
           {gemmaLatency !== null ? (

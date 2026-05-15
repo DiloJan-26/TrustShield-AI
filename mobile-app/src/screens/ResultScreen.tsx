@@ -4,11 +4,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { EvidenceList } from "../components/EvidenceList";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { RiskBadge } from "../components/RiskBadge";
-import { TRUSTSHIELD_MODEL_CONFIG } from "../services/model/modelConfig";
 import { analyzeMockMessage } from "../services/mockAnalysisService";
 import { extractScamSignals } from "../services/scamSignalExtractor";
 import type { TrustShieldResult } from "../types/analysis";
 import { sharedStyles } from "./sharedStyles";
+
+function getModelLabel(source?: TrustShieldResult["model_source"]) {
+  if (source === "base_gemma") return "Base Gemma 4 E2B";
+  if (source === "local_fallback") return "Local safety fallback";
+  return "Mock Safety Mode";
+}
 
 function parseResultParam(resultParam?: string): TrustShieldResult | null {
   if (!resultParam) return null;
@@ -39,16 +44,20 @@ function parseResultParam(resultParam?: string): TrustShieldResult | null {
 
 export function ResultScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; result?: string }>();
+  const params = useLocalSearchParams<{ text?: string; result?: string; signals?: string }>();
   const messageText = typeof params.text === "string" ? params.text : "";
+  const detectedSignals =
+    typeof params.signals === "string" ? parseStringArrayParam(params.signals) : [];
   const signalResult = extractScamSignals(messageText);
   const fallbackResult = analyzeMockMessage(messageText, signalResult);
   const result = parseResultParam(typeof params.result === "string" ? params.result : undefined) ?? {
     ...fallbackResult,
     tamil_warning: "",
+    model_source: "mock" as const,
   };
   const isRisky = result.risk_level !== "safe";
   const shouldShowTamilWarning = result.tamil_warning.trim().length > 0;
+  const modelLabel = getModelLabel(result.model_source);
 
   return (
     <SafeAreaView style={sharedStyles.screen}>
@@ -83,8 +92,22 @@ export function ResultScreen() {
           <Text style={sharedStyles.body}>{result.family_alert}</Text>
         </View>
 
-        <Text style={styles.privacy}>Privacy mode: On-device / No cloud AI</Text>
-        <Text style={styles.model}>Model: {TRUSTSHIELD_MODEL_CONFIG.mode === "mock" ? "Mock Safety Mode" : TRUSTSHIELD_MODEL_CONFIG.mode}</Text>
+        <View style={sharedStyles.card}>
+          <Text style={sharedStyles.cardTitle}>Model</Text>
+          <Text style={sharedStyles.body}>{modelLabel}</Text>
+          {result.latency_ms ? (
+            <Text style={styles.model}>Analysis time: {(result.latency_ms / 1000).toFixed(1)} seconds</Text>
+          ) : null}
+          <Text style={styles.privacy}>Privacy: On-device / No cloud AI</Text>
+        </View>
+
+        {detectedSignals.length > 0 ? (
+          <View style={sharedStyles.card}>
+            <Text style={sharedStyles.cardTitle}>Detected signals</Text>
+            <EvidenceList items={detectedSignals} />
+            <Text style={styles.model}>OCR source: ML Kit</Text>
+          </View>
+        ) : null}
 
         {isRisky ? (
           <PrimaryButton
@@ -132,3 +155,14 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
 });
+
+function parseStringArrayParam(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}

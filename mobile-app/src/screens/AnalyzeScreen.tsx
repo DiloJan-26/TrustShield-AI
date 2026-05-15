@@ -1,43 +1,39 @@
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { demoMessages } from "../data/demoMessages";
 import { recognizeText } from "../native/TrustShieldOCR";
+import {
+  getTrustShieldModelMode,
+  getTrustShieldModelModeLabel,
+  getGemmaRuntimeState,
+} from "../services/model/modelConfig";
 import { analyzeWithTrustShieldModel } from "../services/model/trustShieldModelClient";
-import { extractScamSignals, type BaseRisk } from "../services/scamSignalExtractor";
-import { colors, sharedStyles } from "./sharedStyles";
-
-const riskColors: Record<BaseRisk, { borderColor: string; color: string; backgroundColor: string }> = {
-  safe: {
-    borderColor: "#86efac",
-    color: "#166534",
-    backgroundColor: "#dcfce7",
-  },
-  suspicious: {
-    borderColor: "#facc15",
-    color: "#92400e",
-    backgroundColor: "#fef3c7",
-  },
-  dangerous: {
-    borderColor: "#fca5a5",
-    color: "#991b1b",
-    backgroundColor: "#fee2e2",
-  },
-};
+import type { ModelMode } from "../services/model/modelTypes";
+import { extractScamSignals } from "../services/scamSignalExtractor";
+import { sharedStyles } from "./sharedStyles";
 
 export function AnalyzeScreen() {
   const router = useRouter();
   const [text, setText] = useState("");
-  const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [modelMode, setModelMode] = useState<ModelMode>(getTrustShieldModelMode());
+  const [isGemmaReady, setIsGemmaReady] = useState(getGemmaRuntimeState().ready);
   const signalResult = useMemo(() => extractScamSignals(text), [text]);
-  const gateStyle = riskColors[signalResult.base_risk];
+  const modelLabel = getTrustShieldModelModeLabel(modelMode);
+
+  useFocusEffect(
+    useCallback(() => {
+      setModelMode(getTrustShieldModelMode());
+      setIsGemmaReady(getGemmaRuntimeState().ready);
+    }, []),
+  );
 
   async function analyze() {
     const message = text.trim();
@@ -59,6 +55,7 @@ export function AnalyzeScreen() {
         pathname: "/result",
         params: {
           text: message,
+          signals: JSON.stringify(signalResult.signals),
           result: JSON.stringify({
             ...modelResult,
             tamil_warning: "",
@@ -66,7 +63,10 @@ export function AnalyzeScreen() {
         },
       } as never);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "TrustShield analysis failed.";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Could not complete local model analysis. Using local safety fallback.";
       setAnalysisError(errorMessage);
     } finally {
       setIsAnalyzing(false);
@@ -94,7 +94,6 @@ export function AnalyzeScreen() {
     try {
       const result = await recognizeText(selected.assets[0].uri);
       const detectedText = result.full_text.trim();
-      setOcrText(detectedText);
       setText(detectedText);
       if (!detectedText) {
         setOcrError("No readable text was found in this image.");
@@ -112,8 +111,18 @@ export function AnalyzeScreen() {
       <ScrollView contentContainerStyle={sharedStyles.content}>
         <Text style={sharedStyles.title}>Analyze Message</Text>
         <Text style={sharedStyles.body}>
-          Pick a screenshot or paste a message. OCR and rules run on this device.
+          Pick a screenshot or paste a message. TrustShield analyzes it on this device.
         </Text>
+        <View style={sharedStyles.card}>
+          <Text style={sharedStyles.cardTitle}>Reasoning engine</Text>
+          <Text style={sharedStyles.body}>{modelLabel}</Text>
+          {modelMode === "base_gemma" ? (
+            <Text style={styles.privacyText}>
+              Gemma status: {isGemmaReady ? "Ready" : "Not initialized"}
+            </Text>
+          ) : null}
+          <Text style={styles.privacyText}>Privacy: No cloud AI</Text>
+        </View>
 
         <PrimaryButton
           title={isOcrLoading ? "Reading Screenshot..." : "Pick Screenshot"}
@@ -126,56 +135,20 @@ export function AnalyzeScreen() {
           multiline
           value={text}
           onChangeText={setText}
-          placeholder="Paste or type a suspicious message here"
+          placeholder="OCR text will appear here, or paste/type a message"
           placeholderTextColor="#64748b"
           style={styles.input}
           textAlignVertical="top"
         />
 
-        <View style={sharedStyles.card}>
-          <Text style={sharedStyles.cardTitle}>Demo messages</Text>
-          {demoMessages.map((message) => (
-            <Pressable key={message} onPress={() => setText(message)} style={styles.demoButton}>
-              <Text style={styles.demoText}>{message}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={sharedStyles.card}>
-          <Text style={sharedStyles.cardTitle}>Detected Text</Text>
-          <Text style={styles.detectedText}>{ocrText || "No OCR text yet"}</Text>
-        </View>
-
-        <View style={sharedStyles.card}>
-          <Text style={sharedStyles.cardTitle}>Detected Signals</Text>
-          {signalResult.signals.length > 0 ? (
-            <View style={styles.signalWrap}>
-              {signalResult.signals.map((signal) => (
-                <View key={signal} style={styles.signalChip}>
-                  <Text style={styles.signalText}>Signal: {signal}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={sharedStyles.body}>No signals yet</Text>
-          )}
-        </View>
-
-        <View style={[sharedStyles.card, { borderColor: gateStyle.borderColor }]}>
-          <Text style={sharedStyles.cardTitle}>Initial Safety Gate</Text>
-          <Text
-            style={[
-              styles.gate,
-              { backgroundColor: gateStyle.backgroundColor, color: gateStyle.color },
-            ]}
-          >
-            {signalResult.base_risk.toUpperCase()}
-          </Text>
-          <Text style={styles.note}>Rules extract evidence. Gemma 4 will reason over this evidence.</Text>
-        </View>
-
         <PrimaryButton
-          title={isAnalyzing ? "Analyzing..." : "Analyze with TrustShield AI"}
+          title={
+            isAnalyzing
+              ? modelMode === "base_gemma"
+                ? "Analyzing locally with Base Gemma 4 E2B..."
+                : "Analyzing with local safety mode..."
+              : "Analyze with TrustShield AI"
+          }
           onPress={analyze}
           disabled={!text.trim() || isOcrLoading || isAnalyzing}
         />
@@ -197,59 +170,16 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     padding: 16,
   },
-  demoButton: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-  },
-  demoText: {
-    color: "#334155",
-    fontSize: 16,
-    lineHeight: 23,
-  },
-  detectedText: {
-    color: colors.muted,
-    fontSize: 17,
-    lineHeight: 26,
-  },
-  signalWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  signalChip: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#cbd5e1",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  signalText: {
-    color: "#334155",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  gate: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    fontSize: 17,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-  },
-  note: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-  },
   errorText: {
     color: "#b91c1c",
     fontSize: 16,
     fontWeight: "700",
+    lineHeight: 23,
+  },
+  privacyText: {
+    color: "#0f766e",
+    fontSize: 16,
+    fontWeight: "800",
     lineHeight: 23,
   },
 });

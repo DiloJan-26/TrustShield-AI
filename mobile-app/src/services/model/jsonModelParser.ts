@@ -8,39 +8,94 @@ function clampConfidence(confidence: unknown): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function fallbackOutput(input: TrustShieldModelInput): TrustShieldModelOutput {
-  const warningByRisk: Record<TrustShieldModelOutput["risk_level"], string> = {
-    dangerous: "Do not continue. This message contains high-risk scam signals.",
-    suspicious: "Be careful. Verify this message through the official app or a trusted family member.",
-    safe: "No major scam signal found. Still never share OTP, passwords, or bank details.",
-  };
+export function buildLocalSafetyFallback(
+  input: TrustShieldModelInput,
+  evidenceNote?: string,
+): TrustShieldModelOutput {
+  const evidence = input.evidence.length > 0 ? [...input.evidence] : ["No detailed model evidence was returned."];
+  if (evidenceNote) evidence.unshift(evidenceNote);
+
+  if (input.base_risk === "dangerous") {
+    return {
+      risk_level: "dangerous",
+      confidence: 0.9,
+      scam_type: input.scam_type_hint ?? "high_risk_scam_signals",
+      evidence,
+      simple_warning: "Do not continue. This message contains high-risk scam signals.",
+      safe_action: "Do not click links, share OTP, install apps, or send money. Ask family first.",
+      family_alert: "TrustShield AI detected a dangerous message. Please check before any action.",
+      model_source: "local_fallback",
+    };
+  }
+
+  if (input.base_risk === "suspicious") {
+    return {
+      risk_level: "suspicious",
+      confidence: 0.7,
+      scam_type: input.scam_type_hint ?? "suspicious_message",
+      evidence,
+      simple_warning: "Be careful. This message may be unsafe.",
+      safe_action: "Verify through the official app or a trusted family member before acting.",
+      family_alert: "TrustShield AI detected a suspicious message. Please verify it first.",
+      model_source: "local_fallback",
+    };
+  }
 
   return {
-    risk_level: input.base_risk,
-    confidence: input.base_risk === "dangerous" ? 0.9 : input.base_risk === "suspicious" ? 0.72 : 0.82,
-    scam_type: input.scam_type_hint ?? "unknown",
-    evidence: input.evidence.length > 0 ? input.evidence : ["No detailed model evidence was returned."],
-    simple_warning: warningByRisk[input.base_risk],
-    safe_action:
-      input.base_risk === "safe"
-        ? "Continue carefully and verify unexpected financial or account messages."
-        : "Stop and verify through an official channel or trusted family member.",
-    family_alert:
-      input.base_risk === "safe"
-        ? "TrustShield AI did not find a clear scam pattern, but please verify if the message feels unexpected."
-        : "TrustShield AI found risky signals. Please help check this before the user takes action.",
+    risk_level: "safe",
+    confidence: 0.8,
+    scam_type: input.scam_type_hint ?? "no_major_scam_signal",
+    evidence,
+    simple_warning: "No major scam signal found.",
+    safe_action: "No action needed unless you do not recognize this message. Never share OTP or passwords.",
+    family_alert: "",
+    model_source: "local_fallback",
   };
+}
+
+function extractJsonBlock(rawText: string): string | null {
+  const firstBrace = rawText.indexOf("{");
+  if (firstBrace < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = firstBrace; index < rawText.length; index += 1) {
+    const char = rawText[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+    if (depth === 0) return rawText.slice(firstBrace, index + 1);
+  }
+
+  const lastBrace = rawText.lastIndexOf("}");
+  return lastBrace > firstBrace ? rawText.slice(firstBrace, lastBrace + 1) : null;
 }
 
 function parseJson(rawText: string): unknown {
   try {
-    return JSON.parse(rawText);
+    return JSON.parse(rawText.trim());
   } catch {
-    const match = rawText.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+    const jsonBlock = extractJsonBlock(rawText);
+    if (!jsonBlock) return null;
 
     try {
-      return JSON.parse(match[0]);
+      return JSON.parse(jsonBlock);
     } catch {
       return null;
     }
@@ -52,10 +107,12 @@ export function parseTrustShieldModelOutput(
   fallbackInput: TrustShieldModelInput,
 ): TrustShieldModelOutput {
   const parsed = parseJson(rawText);
-  if (!parsed || typeof parsed !== "object") return fallbackOutput(fallbackInput);
+  const fallback = buildLocalSafetyFallback(fallbackInput);
+  if (!parsed || typeof parsed !== "object") {
+    return { ...fallback, raw_model_output: rawText };
+  }
 
   const value = parsed as Record<string, unknown>;
-  const fallback = fallbackOutput(fallbackInput);
   const riskLevel = riskLevels.includes(value.risk_level as TrustShieldModelOutput["risk_level"])
     ? (value.risk_level as TrustShieldModelOutput["risk_level"])
     : fallbackInput.base_risk;
@@ -63,22 +120,21 @@ export function parseTrustShieldModelOutput(
     ? value.evidence.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : fallbackInput.evidence;
 
-  if (
-    typeof value.scam_type !== "string" ||
-    typeof value.simple_warning !== "string" ||
-    typeof value.safe_action !== "string" ||
-    typeof value.family_alert !== "string"
-  ) {
-    return fallback;
-  }
-
   return {
     risk_level: riskLevel,
     confidence: clampConfidence(value.confidence),
-    scam_type: value.scam_type,
+    scam_type: typeof value.scam_type === "string" && value.scam_type.trim() ? value.scam_type : fallback.scam_type,
     evidence: evidence.length > 0 ? evidence : fallbackInput.evidence,
-    simple_warning: value.simple_warning,
-    safe_action: value.safe_action,
-    family_alert: value.family_alert,
+    simple_warning:
+      typeof value.simple_warning === "string" && value.simple_warning.trim()
+        ? value.simple_warning
+        : fallback.simple_warning,
+    safe_action:
+      typeof value.safe_action === "string" && value.safe_action.trim()
+        ? value.safe_action
+        : fallback.safe_action,
+    family_alert: typeof value.family_alert === "string" ? value.family_alert : fallback.family_alert,
+    model_source: "base_gemma",
+    raw_model_output: rawText,
   };
 }

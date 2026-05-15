@@ -1,33 +1,22 @@
 import type { TrustShieldModelInput } from "./modelTypes";
+import { TRUSTSHIELD_MODEL_CONFIG } from "./modelConfig";
 
 export function buildBaseGemmaPrompt(input: TrustShieldModelInput): string {
-  return `You are TrustShield AI, a scam-protection assistant for parents and grandparents.
+  const compactInput = {
+    ocr_text: input.ocr_text.trim().slice(0, TRUSTSHIELD_MODEL_CONFIG.maxInputChars),
+    detected_urls: input.detected_urls,
+    detected_signals: input.detected_signals,
+    base_risk: input.base_risk,
+    evidence: input.evidence.slice(0, 4),
+    scam_type_hint: input.scam_type_hint,
+  };
 
-Analyze the OCR text and detected scam signals.
-
-Return valid JSON only. Do not include markdown. Do not include explanations outside JSON.
-
-Classify the message as one of:
-- safe
-- suspicious
-- dangerous
-
-Use only the OCR text and detected signals. Do not invent facts.
-
-Be conservative:
-- If the message asks for OTP, PIN, password, CVV, payment, QR payment, app installation, WhatsApp code, or urgent bank verification, mark it dangerous.
-- If it has an unknown link or unclear offer but no direct sensitive request, mark it suspicious.
-- If it has no link, no OTP request, no payment pressure, and no urgent action, mark it safe.
-
-Never tell the user to click links.
-Never tell the user to share OTP.
-Never tell the user to install APKs.
-Never tell the user to send money.
-Never provide financial advice beyond safe actions.
-
-Return JSON with exactly these fields:
-risk_level, confidence, scam_type, evidence, simple_warning, safe_action, family_alert.
-
+  return `TrustShield AI. Return JSON only. No markdown.
+Classify OCR scam risk: safe, suspicious, dangerous.
+Dangerous if OTP/PIN/password/CVV/payment/QR/APK/WhatsApp code/urgent bank verify.
+Suspicious if unknown link or unclear offer. Safe if no link, no OTP, no payment, no urgency.
+Never advise clicking links, sharing OTP, installing APKs, or sending money.
+JSON keys: risk_level, confidence, scam_type, evidence, simple_warning, safe_action, family_alert.
 Input:
-${JSON.stringify(input, null, 2)}`;
+${JSON.stringify(compactInput)}`;
 }

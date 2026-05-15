@@ -1,21 +1,9 @@
+import { generate, isReady } from "../../native/TrustShieldGemma";
 import { analyzeMockMessage } from "../mockAnalysisService";
-import { TRUSTSHIELD_MODEL_CONFIG } from "./modelConfig";
+import { buildBaseGemmaPrompt } from "./baseGemmaPrompt";
+import { getTrustShieldModelMode, TRUSTSHIELD_MODEL_CONFIG } from "./modelConfig";
+import { buildLocalSafetyFallback, parseTrustShieldModelOutput } from "./jsonModelParser";
 import type { TrustShieldModelInput, TrustShieldModelOutput } from "./modelTypes";
-
-function notConnectedOutput(
-  input: TrustShieldModelInput,
-  message: string,
-): TrustShieldModelOutput {
-  return {
-    risk_level: input.base_risk,
-    confidence: input.base_risk === "dangerous" ? 0.9 : input.base_risk === "suspicious" ? 0.72 : 0.82,
-    scam_type: input.scam_type_hint ?? "model_not_connected",
-    evidence: input.evidence.length > 0 ? input.evidence : [message],
-    simple_warning: message,
-    safe_action: "Use Mock Safety Mode until the on-device Gemma module is connected.",
-    family_alert: "TrustShield AI model mode is not connected yet. Please verify this message manually.",
-  };
-}
 
 function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
   const mockResult = analyzeMockMessage(input.ocr_text, {
@@ -34,6 +22,7 @@ function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
     simple_warning: mockResult.simple_warning,
     safe_action: mockResult.safe_action,
     family_alert: mockResult.family_alert,
+    model_source: "mock",
   };
 }
 
@@ -45,19 +34,37 @@ export async function analyzeWithTrustShieldModel(
     ocr_text: input.ocr_text.slice(0, TRUSTSHIELD_MODEL_CONFIG.maxInputChars),
   };
 
-  if (TRUSTSHIELD_MODEL_CONFIG.mode === "mock") {
+  if (getTrustShieldModelMode() === "mock") {
     return analyzeWithMock(limitedInput);
   }
 
-  if (TRUSTSHIELD_MODEL_CONFIG.mode === "base_gemma") {
-    return notConnectedOutput(
+  try {
+    const ready = await isReady();
+    if (!ready) {
+      return buildLocalSafetyFallback(
+        limitedInput,
+        "Base Gemma 4 E2B is not loaded. Using local safety fallback.",
+      );
+    }
+
+    const prompt = buildBaseGemmaPrompt(limitedInput);
+    const raw = await generate(prompt, {
+      maxTokens: TRUSTSHIELD_MODEL_CONFIG.maxOutputTokens,
+      temperature: TRUSTSHIELD_MODEL_CONFIG.temperature,
+    });
+    const parsed = parseTrustShieldModelOutput(raw.text, limitedInput);
+
+    return {
+      ...parsed,
+      latency_ms: raw.latency_ms,
+      model_source: parsed.model_source === "local_fallback" ? "local_fallback" : "base_gemma",
+      raw_model_output: raw.text,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Gemma generation error.";
+    return buildLocalSafetyFallback(
       limitedInput,
-      "Base Gemma 4 E2B native module is not connected yet.",
+      `Could not complete local model analysis: ${message}. Using local safety fallback.`,
     );
   }
-
-  return notConnectedOutput(
-    limitedInput,
-    "Fine-tuned Gemma 4 E2B native module is not connected yet.",
-  );
 }
