@@ -5,6 +5,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { generate as generateGemma, initialize as initializeGemma } from "../native/TrustShieldGemma";
 import {
+  cancelQuickNotification,
+  isNotificationPermissionGranted,
+  requestNotificationPermission,
+  showQuickNotification,
+} from "../native/TrustShieldQuickNotification";
+import {
   BASE_GEMMA_MODEL_PATH,
   disableGemmaRuntime,
   getGemmaRuntimeState,
@@ -31,6 +37,8 @@ const modelSettings = [
   ["No cloud AI", "ON"],
 ];
 
+type QuickNotificationStatus = "Checking" | "Enabled" | "Permission needed" | "Hidden until app reopens";
+
 export function SettingsScreen() {
   const [modelMode, setModelMode] = useState<ModelMode>(getTrustShieldModelMode());
   const initialRuntime = getGemmaRuntimeState();
@@ -40,6 +48,7 @@ export function SettingsScreen() {
   const [isTestingGemma, setIsTestingGemma] = useState(false);
   const [gemmaResponse, setGemmaResponse] = useState(initialRuntime.response);
   const [gemmaLatency, setGemmaLatency] = useState<number | null>(initialRuntime.latency);
+  const [quickStatus, setQuickStatus] = useState<QuickNotificationStatus>("Checking");
   const isGemmaReady = gemmaStatus === "Ready";
 
   const refreshRuntimeState = useCallback(() => {
@@ -51,7 +60,21 @@ export function SettingsScreen() {
     setGemmaLatency(runtime.latency);
   }, []);
 
-  useFocusEffect(refreshRuntimeState);
+  const refreshQuickNotificationStatus = useCallback(async () => {
+    try {
+      const granted = await isNotificationPermissionGranted();
+      setQuickStatus(granted ? "Enabled" : "Permission needed");
+    } catch {
+      setQuickStatus("Permission needed");
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshRuntimeState();
+      refreshQuickNotificationStatus();
+    }, [refreshRuntimeState, refreshQuickNotificationStatus]),
+  );
 
   function chooseModelMode(mode: ModelMode) {
     setTrustShieldModelMode(mode);
@@ -90,6 +113,30 @@ export function SettingsScreen() {
   function disableGemma() {
     disableGemmaRuntime();
     refreshRuntimeState();
+  }
+
+  async function enableQuickAccess() {
+    try {
+      const permission = await requestNotificationPermission();
+      if (!permission.granted) {
+        setQuickStatus("Permission needed");
+        return;
+      }
+
+      const result = await showQuickNotification();
+      setQuickStatus(result.shown ? "Enabled" : "Permission needed");
+    } catch {
+      setQuickStatus("Permission needed");
+    }
+  }
+
+  async function hideQuickAccess() {
+    try {
+      await cancelQuickNotification();
+      setQuickStatus("Hidden until app reopens");
+    } catch {
+      setQuickStatus("Permission needed");
+    }
   }
 
   async function testGemma() {
@@ -148,6 +195,16 @@ export function SettingsScreen() {
               <Text style={styles.value}>{value}</Text>
             </View>
           ))}
+        </View>
+        <View style={sharedStyles.card}>
+          <Text style={sharedStyles.cardTitle}>Quick Access Notification</Text>
+          <Text style={sharedStyles.body}>
+            TrustShield stays ready in your notification bar. Take a screenshot of a suspicious
+            message, then tap Open TrustShield to scan it.
+          </Text>
+          <Text style={styles.status}>Status: {quickStatus}</Text>
+          <PrimaryButton title="Enable Quick Access" onPress={enableQuickAccess} />
+          <PrimaryButton title="Hide Notification" variant="secondary" onPress={hideQuickAccess} />
         </View>
         <View style={sharedStyles.card}>
           <Text style={sharedStyles.cardTitle}>Gemma 4 E2B Model</Text>
