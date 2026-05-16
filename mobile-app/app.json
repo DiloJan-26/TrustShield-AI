@@ -22,6 +22,10 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.djexpo119.trustshieldai"
     },
+    "androidNavigationBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
+    },
     "plugins": [
       "expo-router",
       [
