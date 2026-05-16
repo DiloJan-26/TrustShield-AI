@@ -11,8 +11,9 @@ export function buildBaseGemmaPrompt(input: TrustShieldModelInput): string {
     scam_type_hint: input.scam_type_hint,
   };
 
-  return `TrustShield AI. Return JSON only. No markdown.
+return `TrustShield AI. Return JSON only. No markdown.
 Classify OCR scam risk: safe, suspicious, dangerous.
+Input may include visible OCR text and QR/barcode content extracted from the screenshot. Analyze only the provided text, URLs, and signals.
 Dangerous if OTP/PIN/password/CVV/payment/QR/APK/WhatsApp code/urgent bank verify.
 Suspicious if unknown link or unclear offer. Safe if no link, no OTP, no payment, no urgency.
 Never advise clicking links, sharing OTP, installing APKs, or sending money.

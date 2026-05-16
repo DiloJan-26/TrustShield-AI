@@ -5,7 +5,12 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { recognizeText } from "../native/TrustShieldOCR";
+import { scanCodeWithCamera } from "../native/TrustShieldBarcode";
+import {
+  buildBarcodeOnlyContext,
+  extractImageContext,
+  type ImageContextResult,
+} from "../services/imageContextExtractor";
 import {
   getTrustShieldModelMode,
   getTrustShieldModelModeLabel,
@@ -16,9 +21,14 @@ import type { ModelMode } from "../services/model/modelTypes";
 import { extractScamSignals } from "../services/scamSignalExtractor";
 import { sharedStyles } from "./sharedStyles";
 
+function unique(items: string[]): string[] {
+  return [...new Set(items)];
+}
+
 export function AnalyzeScreen() {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [imageContext, setImageContext] = useState<ImageContextResult | null>(null);
   const [ocrError, setOcrError] = useState("");
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -42,9 +52,10 @@ export function AnalyzeScreen() {
     setIsAnalyzing(true);
     setAnalysisError("");
     try {
+      const detectedUrls = unique([...signalResult.urls, ...(imageContext?.urls ?? [])]);
       const modelResult = await analyzeWithTrustShieldModel({
         ocr_text: message,
-        detected_urls: signalResult.urls,
+        detected_urls: detectedUrls,
         detected_signals: signalResult.signals,
         base_risk: signalResult.base_risk,
         evidence: signalResult.evidence,
@@ -73,7 +84,41 @@ export function AnalyzeScreen() {
     }
   }
 
-  async function pickScreenshot() {
+  async function handleSelectedImage(imageUri: string) {
+    setIsOcrLoading(true);
+    setOcrError("");
+    try {
+      const result = await extractImageContext(imageUri);
+      setImageContext(result);
+      setText(result.combined_text);
+    } catch {
+      setOcrError("Could not read enough text or QR content. Try a clearer image.");
+    } finally {
+      setIsOcrLoading(false);
+    }
+  }
+
+  async function detectQrForAnalysis() {
+    setOcrError("");
+    try {
+      const result = await scanCodeWithCamera();
+      if (result.raw_values.length === 0) {
+        setOcrError("No QR or barcode content was detected. You can still use Pick Screenshot.");
+        return;
+      }
+
+      const context = buildBarcodeOnlyContext(result.barcodes);
+      setImageContext(context);
+      setText(context.combined_text);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/cancel/i.test(message)) return;
+      setOcrError("QR detection is not available on this device. You can still use Pick Screenshot.");
+      return;
+    }
+  }
+
+  async function pickScreenshotForAnalysis() {
     setOcrError("");
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -90,20 +135,7 @@ export function AnalyzeScreen() {
 
     if (selected.canceled || selected.assets.length === 0) return;
 
-    setIsOcrLoading(true);
-    try {
-      const result = await recognizeText(selected.assets[0].uri);
-      const detectedText = result.full_text.trim();
-      setText(detectedText);
-      if (!detectedText) {
-        setOcrError("No readable text was found in this image.");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "OCR failed for this image.";
-      setOcrError(message);
-    } finally {
-      setIsOcrLoading(false);
-    }
+    await handleSelectedImage(selected.assets[0].uri);
   }
 
   return (
@@ -124,22 +156,52 @@ export function AnalyzeScreen() {
           <Text style={styles.privacyText}>Privacy: No cloud AI</Text>
         </View>
 
-        <PrimaryButton
-          title={isOcrLoading ? "Reading Screenshot..." : "Pick Screenshot"}
-          onPress={pickScreenshot}
-          disabled={isOcrLoading}
-        />
+        <View style={styles.imageButtonRow}>
+          <PrimaryButton
+            title="Detect QR"
+            onPress={detectQrForAnalysis}
+            disabled={isOcrLoading}
+            style={styles.imageButton}
+          />
+          <PrimaryButton
+            title={isOcrLoading ? "Extracting..." : "Pick Screenshot"}
+            onPress={pickScreenshotForAnalysis}
+            disabled={isOcrLoading}
+            style={styles.imageButton}
+          />
+        </View>
+        <Text style={styles.helperText}>
+          Detect a live QR/barcode, or choose a screenshot of a suspicious message, QR code, or link.
+        </Text>
         {ocrError ? <Text style={styles.errorText}>{ocrError}</Text> : null}
 
         <TextInput
           multiline
           value={text}
-          onChangeText={setText}
+          onChangeText={(value) => {
+            setText(value);
+            setImageContext(null);
+          }}
           placeholder="OCR text will appear here, or paste/type a message"
           placeholderTextColor="#64748b"
           style={styles.input}
           textAlignVertical="top"
         />
+
+        {imageContext ? (
+          <View style={sharedStyles.card}>
+            <Text style={sharedStyles.cardTitle}>Image context extracted</Text>
+            <Text style={styles.contextText}>
+              Visible text found: {imageContext.context_summary.has_ocr_text ? "Yes" : "No"}
+            </Text>
+            <Text style={styles.contextText}>
+              QR/barcode found: {imageContext.context_summary.has_barcode ? "Yes" : "No"}
+            </Text>
+            <Text style={styles.contextText}>
+              URLs found: {imageContext.context_summary.url_count}
+            </Text>
+          </View>
+        ) : null}
 
         <PrimaryButton
           title={
@@ -159,6 +221,21 @@ export function AnalyzeScreen() {
 }
 
 const styles = StyleSheet.create({
+  imageButtonRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    minHeight: 58,
+    paddingHorizontal: 12,
+  },
+  helperText: {
+    color: "#475569",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 23,
+  },
   input: {
     minHeight: 150,
     backgroundColor: "#ffffff",
@@ -180,6 +257,12 @@ const styles = StyleSheet.create({
     color: "#0f766e",
     fontSize: 16,
     fontWeight: "800",
+    lineHeight: 23,
+  },
+  contextText: {
+    color: "#334155",
+    fontSize: 16,
+    fontWeight: "700",
     lineHeight: 23,
   },
 });

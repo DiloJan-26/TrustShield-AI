@@ -8,8 +8,8 @@ export type ScamSignalResult = {
   scam_type_hint: string;
 };
 
-const SHORTENER_PATTERN = /\b(?:bit\.ly|tinyurl\.com|shorturl\.at|t\.co|goo\.gl|ow\.ly|cutt\.ly|is\.gd|buff\.ly)\b/i;
-const SUSPICIOUS_TLD_PATTERN = /\.(?:store|click|top|xyz|icu|online|shop|site)\b/i;
+const SHORTENER_PATTERN = /\b(?:bit\.ly|tinyurl\.com|shorturl\.at|t\.co|cutt\.ly)\b/i;
+const SUSPICIOUS_TLD_PATTERN = /\.(?:store|info|online|top|click|xyz)\b/i;
 
 function normalize(text: string) {
   return text.toLowerCase();
@@ -20,11 +20,12 @@ function unique(items: string[]) {
 }
 
 export function extractUrls(text: string): string[] {
-  return (
+  const matches =
     text.match(
-      /https?:\/\/[^\s]+|www\.[^\s]+|\b[a-z0-9.-]+\.(?:com|lk|store|net|org|click|top|xyz|icu|online|shop|site)\b[^\s]*/gi,
-    ) ?? []
-  );
+      /https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+|\b(?:bit\.ly|tinyurl\.com|t\.co|cutt\.ly|shorturl\.at)\/[^\s<>"')\]]+|\b[a-z0-9][a-z0-9.-]*\.(?:com|lk|net|org|store|info|online|top|click|xyz)\b[^\s<>"')\]]*/gi,
+    ) ?? [];
+
+  return matches.map((url) => url.replace(/[.,;:!?]+$/g, ""));
 }
 
 export function detectOtpRequest(text: string): boolean {
@@ -153,6 +154,8 @@ function buildEvidence(signals: string[], urls: string[]): string[] {
   if (signals.includes("job_offer_unrealistic")) evidence.push("Message promises unrealistic job income.");
   if (signals.includes("delivery_fee_request")) evidence.push("Message asks for a parcel or delivery fee.");
   if (signals.includes("qr_payment_request")) evidence.push("Message asks for QR payment.");
+  if (signals.includes("barcode_content_detected")) evidence.push("QR/barcode content detected.");
+  if (signals.includes("qr_contains_url")) evidence.push("QR contains URL.");
   if (signals.includes("apk_install_request")) evidence.push("Message asks the user to install an APK/app.");
   if (signals.includes("government_impersonation")) evidence.push("Message appears to impersonate a government service.");
   if (signals.includes("loan_offer")) evidence.push("Message offers a loan or fast approval.");
@@ -204,6 +207,10 @@ export function extractScamSignals(text: string): ScamSignalResult {
     signals.push("delivery_fee_request");
   }
   if (detectQrPayment(trimmed)) signals.push("qr_payment_request");
+  if (/QR \/ barcode content:/i.test(trimmed)) {
+    signals.push("barcode_content_detected");
+    if (urls.length > 0) signals.push("qr_contains_url");
+  }
   if (detectApkInstall(trimmed)) signals.push("apk_install_request");
   if (detectGovernmentImpersonation(trimmed)) signals.push("government_impersonation");
   if (/loan|quick cash|instant approval/i.test(trimmed)) signals.push("loan_offer");
