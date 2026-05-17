@@ -5,8 +5,8 @@ export const BASE_GEMMA_MODEL_PATH =
 
 export const TRUSTSHIELD_MODEL_CONFIG = {
   v1EnglishOnly: true,
-  maxInputChars: 700,
-  maxOutputTokens: 128,
+  maxInputChars: 360,
+  maxOutputTokens: 96,
   temperature: 0.1,
 };
 

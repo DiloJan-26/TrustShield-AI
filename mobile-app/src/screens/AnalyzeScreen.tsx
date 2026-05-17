@@ -18,6 +18,10 @@ import {
 } from "../services/model/modelConfig";
 import { analyzeWithTrustShieldModel } from "../services/model/trustShieldModelClient";
 import type { ModelMode } from "../services/model/modelTypes";
+import {
+  retrieveScamPlaybookMatches,
+  toCompactPlaybookForPrompt,
+} from "../services/scamPlaybook";
 import { extractScamSignals } from "../services/scamSignalExtractor";
 import { sharedStyles } from "./sharedStyles";
 
@@ -53,13 +57,33 @@ export function AnalyzeScreen() {
     setAnalysisError("");
     try {
       const detectedUrls = unique([...signalResult.urls, ...(imageContext?.urls ?? [])]);
+      const playbookMatches = retrieveScamPlaybookMatches({
+        text: message,
+        signals: signalResult.signals,
+        urls: detectedUrls,
+        scam_type_hint: signalResult.scam_type_hint,
+      });
       const modelResult = await analyzeWithTrustShieldModel({
         ocr_text: message,
         detected_urls: detectedUrls,
         detected_signals: signalResult.signals,
         base_risk: signalResult.base_risk,
+        rule_risk_hint: signalResult.base_risk,
         evidence: signalResult.evidence,
         scam_type_hint: signalResult.scam_type_hint,
+        retrieved_playbook: toCompactPlaybookForPrompt(playbookMatches),
+        debug_info: {
+          rule_signals: signalResult.signals,
+          scam_type_hint: signalResult.scam_type_hint,
+          playbook_ids: playbookMatches.map((entry) => entry.id),
+          extraction_source: imageContext
+            ? imageContext.context_summary.has_ocr_text && imageContext.context_summary.has_barcode
+              ? "ocr_qr"
+              : imageContext.context_summary.has_barcode
+                ? "qr"
+                : "ocr"
+            : "manual",
+        },
       });
 
       router.push({

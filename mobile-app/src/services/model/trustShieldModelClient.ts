@@ -2,7 +2,11 @@ import { generate, isReady } from "../../native/TrustShieldGemma";
 import { analyzeMockMessage } from "../mockAnalysisService";
 import { buildBaseGemmaPrompt } from "./baseGemmaPrompt";
 import { getTrustShieldModelMode, TRUSTSHIELD_MODEL_CONFIG } from "./modelConfig";
-import { buildLocalSafetyFallback, parseTrustShieldModelOutput } from "./jsonModelParser";
+import {
+  buildLocalFallbackOutput,
+  buildLocalSafetyFallback,
+  parseTrustShieldModelOutput,
+} from "./jsonModelParser";
 import type { TrustShieldModelInput, TrustShieldModelOutput } from "./modelTypes";
 
 function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
@@ -13,8 +17,10 @@ function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
     evidence: input.evidence,
     scam_type_hint: input.scam_type_hint ?? "no_clear_scam_pattern_detected",
   });
+  const fallbackShape = buildLocalFallbackOutput(input);
 
   return {
+    ...fallbackShape,
     risk_level: mockResult.risk_level,
     confidence: mockResult.confidence,
     scam_type: mockResult.scam_type,
@@ -23,6 +29,8 @@ function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
     safe_action: mockResult.safe_action,
     family_alert: mockResult.family_alert,
     model_source: "mock",
+    fallback_used: false,
+    json_valid: true,
   };
 }
 
