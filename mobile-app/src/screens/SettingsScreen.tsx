@@ -26,7 +26,7 @@ import { sharedStyles } from "./sharedStyles";
 
 const settings = [
   ["Privacy Mode", "ON"],
-  ["Family Alert", "Enabled"],
+  ["Scam State Report", "Available"],
   ["Language", "English V1"],
   ["Device Mode", "Demo Foundation Mode"],
 ];

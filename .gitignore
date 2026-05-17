@@ -8,3 +8,4 @@ models/*.litertlm
 mobile-app/models/*.litertlm
 *.gguf
 models/*.gguf
+3.task3.md

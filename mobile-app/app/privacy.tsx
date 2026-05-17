@@ -1,3 +1,3 @@
-import { PrivacyScreen } from "../src/screens/PrivacyScreen";
+import { SecurityInfoScreen } from "../src/screens/SecurityInfoScreen";
 
-export default PrivacyScreen;
+export default SecurityInfoScreen;

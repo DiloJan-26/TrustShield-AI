@@ -21,7 +21,7 @@ function unique(items: string[]): string[] {
 }
 
 function hasUnsafeAdvice(value: string): boolean {
-  return /click the link|open the link|share otp|share password|install apk|send money|pay first|reply with code/i.test(
+  return /(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?(?:click|open|tap|visit)\s+(?:the\s+)?link|(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?share\s+(?:the\s+)?(?:otp|password|pin|cvv|code)|(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?install\s+(?:the\s+)?(?:apk|app)|(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?(?:send|transfer)\s+money|(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?pay\s+first|(?:^|[.!?]\s*)(?:please\s+)?(?:you\s+(?:should|can|must)\s+)?reply\s+with\s+(?:the\s+)?code/i.test(
     value,
   );
 }
@@ -32,6 +32,23 @@ function safeText(value: string): string {
 
 function safeArray(items: string[]): string[] {
   return items.map(safeText);
+}
+
+function hasOnlyGenericSafetyText(value: string): boolean {
+  return value.trim().toLowerCase() === safeReplacement.toLowerCase();
+}
+
+function safeExplanation(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (hasOnlyGenericSafetyText(trimmed)) return fallback;
+
+  return trimmed
+    .replace(/\bclick the link\b/gi, "use the message link")
+    .replace(/\bopen the link\b/gi, "open the message link")
+    .replace(/\bshare otp\b/gi, "give an OTP")
+    .replace(/\bshare password\b/gi, "give a password")
+    .replace(/\bsend money\b/gi, "send money");
 }
 
 function asStringArray(value: unknown): string[] {
@@ -76,6 +93,33 @@ function buildSafeClues(input: TrustShieldModelInput): string[] {
 
 function getTopPlaybook(input: TrustShieldModelInput) {
   return input.retrieved_playbook?.[0] ?? null;
+}
+
+function buildMessageExplanation(input: TrustShieldModelInput, fallback: string): string {
+  const topPlaybook = getTopPlaybook(input);
+  const signals = new Set(input.detected_signals);
+
+  if (signals.has("otp_request") || signals.has("whatsapp_code_request")) {
+    return "This message is trying to get a private verification code so someone else may access the account.";
+  }
+  if (signals.has("bank_impersonation") && signals.has("urgent_action")) {
+    return "This message pretends there is an urgent bank or account problem so the user reacts quickly.";
+  }
+  if (signals.has("fake_gift_card_offer") || signals.has("reward_offer")) {
+    return "This message is offering a prize or reward to make the user trust it and follow its request.";
+  }
+  if (signals.has("delivery_fee_request")) {
+    return "This message claims a parcel needs extra payment or confirmation before delivery can continue.";
+  }
+  if (signals.has("qr_contains_payment_link") || signals.has("qr_payment_request")) {
+    return "This message uses a QR code or payment request that may hide where the money or link goes.";
+  }
+  if (signals.has("apk_install_request")) {
+    return "This message is trying to make the user install an app outside the normal app store.";
+  }
+  if (topPlaybook) return topPlaybook.explanation;
+
+  return fallback;
 }
 
 function getPlaybookEvidence(input: TrustShieldModelInput): string[] {
@@ -395,7 +439,10 @@ export function parseTrustShieldModelOutput(
     risk_level: conservative.risk,
     confidence,
     scam_type: readString(value.scam_type) || readString(value.t) || fallback.scam_type,
-    explanation: safeText(readString(value.explanation) || readString(value.x) || fallback.explanation),
+    explanation: safeExplanation(
+      readString(value.explanation) || readString(value.x),
+      buildMessageExplanation(fallbackInput, fallback.explanation),
+    ),
     scam_identity: {
       risky_clues: safeArray(unique([
         ...asStringArray(scamIdentity?.risky_clues),

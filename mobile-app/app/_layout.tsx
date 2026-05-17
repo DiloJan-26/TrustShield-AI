@@ -49,7 +49,7 @@ export default function RootLayout() {
         <Stack.Screen name="home" />
         <Stack.Screen name="analyze" />
         <Stack.Screen name="result" />
-        <Stack.Screen name="family-alert" />
+        <Stack.Screen name="scam-report" />
         <Stack.Screen name="privacy" />
         <Stack.Screen name="settings" />
       </Stack>

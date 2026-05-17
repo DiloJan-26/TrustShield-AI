@@ -20,12 +20,22 @@ export function HomeScreen() {
 
         <View style={sharedStyles.card}>
           <Text style={sharedStyles.cardTitle}>Privacy</Text>
-          <Text style={styles.item}># No cloud AI - Local Gemma 4 protection</Text>
-          <Text style={styles.item}># All Sensitive messages are processed locally</Text>
+          <View style={styles.pointRow}>
+            <Text style={styles.check}>✓</Text>
+            <Text style={styles.item}>No cloud AI - Local Gemma 4 protection</Text>
+          </View>
+          <View style={styles.pointRow}>
+            <Text style={styles.check}>✓</Text>
+            <Text style={styles.item}>All sensitive messages are processed locally</Text>
+          </View>
         </View>
 
         <PrimaryButton title="Analyze Message" onPress={() => router.push("/analyze" as never)} />
-        <PrimaryButton title="Privacy" variant="secondary" onPress={() => router.push("/privacy" as never)} />
+        <PrimaryButton
+          title="Scam Help & Safety"
+          variant="secondary"
+          onPress={() => router.push("/privacy" as never)}
+        />
         <PrimaryButton title="Settings" variant="secondary" onPress={() => router.push("/settings" as never)} />
       </ScrollView>
     </SafeAreaView>
@@ -40,7 +50,19 @@ const styles = StyleSheet.create({
   },
   item: {
     color: "#334155",
+    flex: 1,
     fontSize: 19,
+    lineHeight: 28,
+  },
+  pointRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+  },
+  check: {
+    color: "#0f766e",
+    fontSize: 21,
+    fontWeight: "900",
     lineHeight: 28,
   },
 });

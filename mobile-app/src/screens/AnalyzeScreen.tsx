@@ -177,7 +177,7 @@ export function AnalyzeScreen() {
               Gemma status: {isGemmaReady ? "Ready" : "Not initialized"}
             </Text>
           ) : null}
-          <Text style={styles.privacyText}>Privacy: No cloud AI</Text>
+          <Text style={styles.privacyText}>Privacy: No cloud AI / On-device processing</Text>
         </View>
 
         <View style={styles.imageButtonRow}>

@@ -59,6 +59,15 @@ function buildHandlingText(result: TrustShieldResult): string {
   return limitWords(result.safe_action, 40);
 }
 
+function buildExplanationText(result: TrustShieldResult, handlingText: string): string {
+  const explanation = result.explanation?.trim() || fallbackExplanation();
+  if (explanation.toLowerCase() === handlingText.trim().toLowerCase()) {
+    return fallbackExplanation();
+  }
+
+  return limitWords(explanation, 40);
+}
+
 export function ResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; result?: string; signals?: string }>();
@@ -73,9 +82,9 @@ export function ResultScreen() {
   const isRisky = result.risk_level !== "safe";
   const modelLabel = getModelLabel(result.model_source);
   const friendlyScamType = getFriendlyScamType(result.scam_type);
-  const explanation = limitWords(result.explanation?.trim() || fallbackExplanation(), 40);
   const evidence = result.evidence.length > 0 ? result.evidence.slice(0, 4) : signalResult.evidence.slice(0, 4);
   const handlingText = buildHandlingText(result);
+  const explanation = buildExplanationText(result, handlingText);
 
   return (
     <SafeAreaView style={sharedStyles.screen}>
@@ -120,9 +129,9 @@ export function ResultScreen() {
 
         {isRisky ? (
           <PrimaryButton
-            title="Ask Family"
+            title="Scam State Report"
             variant="danger"
-            onPress={() => router.push({ pathname: "/family-alert", params: { text: messageText } } as never)}
+            onPress={() => router.push({ pathname: "/scam-report", params: { text: messageText } } as never)}
           />
         ) : null}
         <PrimaryButton
