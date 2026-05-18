@@ -1,0 +1,94 @@
+# Dependencies / package manager cache
+node_modules
+node_modules/
+node_modules/**
+.npm
+.npm/
+.npm/**
+.yarn
+.yarn/
+.yarn/**
+.pnpm-store
+.pnpm-store/
+.pnpm-store/**
+
+# Expo / Metro
+.expo
+.expo/
+.expo/**
+.expo-shared
+.expo-shared/
+.expo-shared/**
+dist
+dist/
+dist/**
+web-build
+web-build/
+web-build/**
+
+# Android build outputs and caches
+android/.gradle
+android/.gradle/
+android/.gradle/**
+android/build
+android/build/
+android/build/**
+android/app/build
+android/app/build/
+android/app/build/**
+android/app/.cxx
+android/app/.cxx/
+android/app/.cxx/**
+android/app/intermediates
+android/app/intermediates/
+android/app/intermediates/**
+**/.gradle
+**/.gradle/**
+**/.cxx
+**/.cxx/**
+**/build/intermediates/**
+**/build/outputs/**
+**/build/tmp/**
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Local model files - DO NOT upload or bundle model
+*.litertlm
+models/*.litertlm
+mobile-app/models/*.litertlm
+android/app/src/main/assets/*.litertlm
+android/app/src/main/res/raw/*.litertlm
+
+# Temporary / cache files
+tmp
+tmp/
+tmp/**
+temp
+temp/
+temp/**
+.cache
+.cache/
+.cache/**
+
+# Local editor files
+.vscode
+.vscode/
+.vscode/**
+
+# Local build archives / exported artifacts
+*.apk
+*.aab
+*.apks
+*.zip
+
+# Test/output folders if they are not required for app runtime
+coverage

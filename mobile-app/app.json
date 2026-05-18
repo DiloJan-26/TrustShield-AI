@@ -41,6 +41,12 @@
         }
       ]
     ],
-    "experiments": {}
+    "experiments": {},
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1f46a83c-6e6a-4805-9b14-c4e432eec988"
+      }
+    }
   }
 }

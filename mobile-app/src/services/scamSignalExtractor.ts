@@ -99,7 +99,7 @@ export function detectUrgency(text: string): boolean {
 }
 
 export function detectPaymentRequest(text: string): boolean {
-  return /payment|pay|fee|send money|bank transfer|transfer now|deposit now|deposit first|processing fee|card details|lankaqr|wallet/i.test(
+  return /payment|pay|fee|send money|bank transfer|transfer now|deposit now|deposit first|advance payment|approval fee|clearance fee|processing fee|card details|lankaqr|wallet/i.test(
     text,
   );
 }
@@ -132,7 +132,7 @@ export function detectBankImpersonation(text: string): boolean {
 }
 
 export function detectGovernmentImpersonation(text: string): boolean {
-  return /government|gov\.lk|police|tax|revenue|customs|immigration|court|fine|benefit|allowance|relief/i.test(
+  return /government|gov\.lk|police|tax|revenue|customs|immigration|court|fine|penalty|benefit|allowance|relief/i.test(
     text,
   );
 }
@@ -160,6 +160,52 @@ export function detectApkInstall(text: string): boolean {
 
 export function detectQrPayment(text: string): boolean {
   return /qr payment|scan qr|qr code|scan and pay|pay by qr/i.test(text);
+}
+
+function detectKycUpdate(text: string): boolean {
+  return /\bkyc\b|know your customer|update (?:your )?details|verify (?:your )?(?:identity|account)|nic|national identity card|passport/i.test(
+    text,
+  );
+}
+
+function detectSimUpgrade(text: string): boolean {
+  return /sim upgrade|sim verification|verify sim|connection (?:will be )?(?:blocked|suspended)|4g upgrade|5g upgrade|reload pin/i.test(
+    text,
+  );
+}
+
+function detectTaskJob(text: string): boolean {
+  return /rating job|like videos|complete tasks|task bonus|telegram job|part[- ]time task|online tasks|daily commission/i.test(
+    text,
+  );
+}
+
+function detectLoanApprovalFee(text: string): boolean {
+  return /loan approved|instant loan|quick cash|approval fee|loan processing fee|processing fee.*loan|loan.*processing fee/i.test(
+    text,
+  );
+}
+
+function detectGuaranteedProfit(text: string): boolean {
+  return /double your money|guaranteed profit|fixed return|daily return|profit daily|risk[- ]?free profit/i.test(
+    text,
+  );
+}
+
+function detectTaxOrFinePayment(text: string): boolean {
+  return /tax|revenue|fine|penalty|court|police fine|traffic fine/i.test(text) && detectPaymentRequest(text);
+}
+
+function detectMarketplaceAdvance(text: string): boolean {
+  return /facebook marketplace|marketplace|ikman|daraz seller|buyer|seller|courier/i.test(text) &&
+    /advance|deposit|reserve|booking fee|delivery fee|courier fee|pay first/i.test(text);
+}
+
+function detectPhishingLoginPage(text: string, urls: string[]): boolean {
+  if (urls.length === 0) return false;
+  return /login|sign in|verify account|secure portal|update details|password|mobile banking|internet banking/i.test(
+    text,
+  );
 }
 
 function addRewardSignals(text: string, signals: string[]) {
@@ -246,12 +292,34 @@ export function computeBaseRisk(signals: string[]): BaseRisk {
     "apk_install_request",
     "qr_payment_request",
     "qr_contains_payment_link",
+    "customs_fee_request",
+    "loan_approval_fee",
+    "tax_fine_payment_request",
   ];
 
   if (hasAnySignal(signalSet, directDangerSignals)) return "dangerous";
+  if (
+    signalSet.has("kyc_update_request") &&
+    hasAnySignal(signalSet, ["unknown_url", "sensitive_action_request", "bank_impersonation"])
+  ) {
+    return "dangerous";
+  }
+  if (
+    signalSet.has("sim_upgrade_request") &&
+    hasAnySignal(signalSet, ["otp_request", "sensitive_action_request", "unknown_url"])
+  ) {
+    return "dangerous";
+  }
+  if (
+    signalSet.has("phishing_login_page") &&
+    hasAnySignal(signalSet, ["unknown_url", "password_request", "safe_link_preview_login_or_payment_page"])
+  ) {
+    return "dangerous";
+  }
   if (signalSet.has("payment_request") && hasUnknownOrShortLink(signalSet)) return "dangerous";
   if (signalSet.has("delivery_fee_request")) return "dangerous";
   if (signalSet.has("registration_fee")) return "dangerous";
+  if (signalSet.has("advance_payment_request") && signalSet.has("marketplace_advance_payment")) return "dangerous";
   if (signalSet.has("account_blocked_threat") && signalSet.has("bank_impersonation")) return "dangerous";
   if (
     signalSet.has("bank_impersonation") &&
@@ -298,6 +366,9 @@ export function computeBaseRisk(signals: string[]): BaseRisk {
   if (signalSet.has("investment_profit_promise") && signalSet.has("payment_request")) {
     return "dangerous";
   }
+  if (signalSet.has("guaranteed_profit_claim") && signalSet.has("payment_request")) {
+    return "dangerous";
+  }
   if (
     signalSet.has("telco_offer_claim") &&
     signalSet.has("click_link_request") &&
@@ -329,6 +400,16 @@ export function computeBaseRisk(signals: string[]): BaseRisk {
     "qr_preview_domain_mismatch",
     "qr_preview_login_or_payment_page",
     "qr_preview_reward_claim_page",
+    "kyc_update_request",
+    "sim_upgrade_request",
+    "task_job_offer",
+    "loan_approval_fee",
+    "guaranteed_profit_claim",
+    "tax_fine_payment_request",
+    "marketplace_advance_payment",
+    "advance_payment_request",
+    "refund_or_cashback_claim",
+    "phishing_login_page",
     "safe_link_preview_failed",
     "safe_link_preview_no_internet",
     "safe_link_preview_blocked",
@@ -390,7 +471,10 @@ function buildEvidence(signals: string[], urls: string[]): string[] {
   if (signals.includes("payment_request")) evidence.push("Message requests payment or money transfer.");
   if (signals.includes("registration_fee")) evidence.push("Message asks for a registration fee.");
   if (signals.includes("job_offer_unrealistic")) evidence.push("Message promises unrealistic job income.");
+  if (signals.includes("task_job_offer")) evidence.push("Message offers online task, rating, or commission work.");
+  if (signals.includes("loan_approval_fee")) evidence.push("Message asks for a loan approval or processing fee.");
   if (signals.includes("delivery_fee_request")) evidence.push("Message asks for a parcel or delivery fee.");
+  if (signals.includes("customs_fee_request")) evidence.push("Message asks for a customs, clearance, or parcel release fee.");
   if (signals.includes("qr_payment_request")) evidence.push("Message asks for QR payment.");
   if (signals.includes("barcode_content_detected")) evidence.push("QR/barcode content detected.");
   if (signals.includes("qr_contains_url")) evidence.push("QR contains URL.");
@@ -398,11 +482,19 @@ function buildEvidence(signals: string[], urls: string[]): string[] {
   if (signals.includes("apk_install_request")) evidence.push("Message asks the user to install an APK/app.");
   if (signals.includes("government_impersonation")) evidence.push("Message appears to impersonate a government service.");
   if (signals.includes("government_benefit_claim")) evidence.push("Message claims a government benefit or relief payment.");
+  if (signals.includes("tax_fine_payment_request")) evidence.push("Message threatens tax, revenue, police, court, or fine payment.");
   if (signals.includes("loan_offer")) evidence.push("Message offers a loan or fast approval.");
   if (signals.includes("investment_profit_promise")) evidence.push("Message promises investment profit.");
+  if (signals.includes("guaranteed_profit_claim")) evidence.push("Message promises guaranteed or unusually high profit.");
   if (signals.includes("crypto_profit_promise")) evidence.push("Message promises crypto profit.");
   if (signals.includes("whatsapp_code_request")) evidence.push("Message asks for a WhatsApp code.");
   if (signals.includes("telco_offer_claim")) evidence.push("Message claims to offer a free mobile/data reward.");
+  if (signals.includes("sim_upgrade_request")) evidence.push("Message mentions SIM upgrade, SIM verification, or connection suspension.");
+  if (signals.includes("kyc_update_request")) evidence.push("Message asks for KYC, identity, or account detail updates.");
+  if (signals.includes("refund_or_cashback_claim")) evidence.push("Message claims a refund, cashback, or reversal.");
+  if (signals.includes("marketplace_advance_payment")) evidence.push("Message looks like a marketplace advance payment request.");
+  if (signals.includes("advance_payment_request")) evidence.push("Message asks for advance payment or deposit first.");
+  if (signals.includes("phishing_login_page")) evidence.push("Message points to a login or verification page link.");
   if (signals.includes("official_app_available")) {
     evidence.push("User should verify inside the official app or official outlet instead of clicking a message link.");
   }
@@ -520,17 +612,27 @@ export function extractQrSafePreviewSignals(
 }
 
 function getScamTypeHint(signals: string[], baseRisk: BaseRisk): string {
+  if (signals.includes("sim_upgrade_request")) return "sim_upgrade_verification_scam";
   if (signals.includes("otp_request") || signals.includes("whatsapp_code_request")) {
     return "account_takeover_or_otp_scam";
   }
+  if (signals.includes("kyc_update_request")) return "fake_kyc_update_scam";
+  if (signals.includes("tax_fine_payment_request")) return "tax_or_fine_payment_scam";
   if (signals.includes("fake_gift_card_offer")) return "fake_gift_card_or_reward_scam";
   if (signals.includes("telco_offer_claim")) return "telco_reward_or_data_offer";
   if (signals.includes("bank_impersonation")) return "bank_impersonation";
+  if (signals.includes("customs_fee_request")) return "customs_parcel_fee_scam";
   if (signals.includes("delivery_fee_request")) return "delivery_fee_scam";
+  if (signals.includes("task_job_offer")) return "part_time_task_job_scam";
+  if (signals.includes("loan_approval_fee")) return "loan_approval_fee_scam";
   if (signals.includes("job_offer_unrealistic")) return "job_or_registration_fee_scam";
   if (signals.includes("reward_offer")) return "reward_or_survey_scam";
   if (signals.includes("government_benefit_claim")) return "government_benefit_scam";
   if (signals.includes("government_impersonation")) return "government_impersonation";
+  if (signals.includes("marketplace_advance_payment")) return "marketplace_advance_payment_scam";
+  if (signals.includes("refund_or_cashback_claim")) return "fake_refund_or_cashback_scam";
+  if (signals.includes("phishing_login_page")) return "phishing_login_page_link";
+  if (signals.includes("crypto_profit_promise")) return "crypto_profit_scam";
   if (signals.includes("investment_profit_promise") || signals.includes("crypto_profit_promise")) {
     return "investment_profit_scam";
   }
@@ -554,11 +656,19 @@ export function extractScamSignals(text: string): ScamSignalResult {
   addRewardSignals(trimmed, signals);
   addTelcoSignals(trimmed, signals);
   addExternalActionSignals(trimmed, signals);
+  if (detectKycUpdate(trimmed)) signals.push("kyc_update_request");
+  if (detectSimUpgrade(trimmed)) signals.push("sim_upgrade_request");
   if (/survey/i.test(trimmed)) signals.push("survey_request");
   if (detectPaymentRequest(trimmed)) signals.push("payment_request");
   if (/registration fee/i.test(trimmed)) signals.push("registration_fee");
-  if (detectJobScam(trimmed)) signals.push("job_offer_unrealistic");
+  if (detectTaskJob(trimmed)) signals.push("task_job_offer");
+  if (detectJobScam(trimmed) || detectTaskJob(trimmed)) signals.push("job_offer_unrealistic");
+  if (detectLoanApprovalFee(trimmed)) signals.push("loan_approval_fee");
   if (detectDeliveryScam(trimmed) && /delivery fee|shipping fee|pay|payment|rs\s?350|lkr\s?350/i.test(trimmed)) {
+    signals.push("delivery_fee_request");
+  }
+  if (/customs|clearance|import duty|parcel release/i.test(trimmed) && /fee|pay|payment|tax|duty/i.test(trimmed)) {
+    signals.push("customs_fee_request");
     signals.push("delivery_fee_request");
   }
   if (detectDeliveryScam(trimmed) && /address confirmation|confirm address|update address/i.test(trimmed)) {
@@ -570,13 +680,24 @@ export function extractScamSignals(text: string): ScamSignalResult {
   if (/benefit|allowance|relief|grant/i.test(trimmed) && /government|gov|samurdhi|tax|revenue/i.test(trimmed)) {
     signals.push("government_benefit_claim");
   }
+  if (detectTaxOrFinePayment(trimmed)) signals.push("tax_fine_payment_request");
   if (/loan|quick cash|instant approval|loan approved/i.test(trimmed)) signals.push("loan_offer");
   if (/investment|double your money|guaranteed profit|profit daily|investment return/i.test(trimmed)) {
     signals.push("investment_profit_promise");
   }
+  if (detectGuaranteedProfit(trimmed)) signals.push("guaranteed_profit_claim");
   if (/crypto|bitcoin|usdt|binance/i.test(trimmed) && /profit|double|earn/i.test(trimmed)) {
     signals.push("crypto_profit_promise");
   }
+  if (/refund|cashback|reversal|money back/i.test(trimmed)) signals.push("refund_or_cashback_claim");
+  if (detectMarketplaceAdvance(trimmed)) {
+    signals.push("marketplace_advance_payment");
+    signals.push("advance_payment_request");
+  }
+  if (/advance payment|deposit first|pay first|booking fee|reserve (?:this )?item/i.test(trimmed)) {
+    signals.push("advance_payment_request");
+  }
+  if (detectPhishingLoginPage(trimmed, urls)) signals.push("phishing_login_page");
 
   addQrSignals(trimmed, urls, signals);
   signals.push(...detectSuspiciousDomain(urls));
@@ -625,7 +746,14 @@ export function extractScamSignals(text: string): ScamSignalResult {
     "cvv_request",
     "registration_fee",
     "delivery_fee_request",
+    "customs_fee_request",
     "whatsapp_code_request",
+    "kyc_update_request",
+    "sim_upgrade_request",
+    "loan_approval_fee",
+    "tax_fine_payment_request",
+    "advance_payment_request",
+    "phishing_login_page",
   ];
 
   const hasRewardClickOrClaim =

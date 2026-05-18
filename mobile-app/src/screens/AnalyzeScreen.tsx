@@ -7,6 +7,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { scanCodeWithCamera } from "../native/TrustShieldBarcode";
 import {
+  cleanupOldSharedImages,
+  clearSharedImage,
+  getInitialSharedImage,
+} from "../native/TrustShieldShareReceiver";
+import {
   buildBarcodeOnlyContext,
   extractImageContext,
   type ImageContextResult,
@@ -93,6 +98,7 @@ export function AnalyzeScreen() {
   const [isGemmaReady, setIsGemmaReady] = useState(getGemmaRuntimeState().ready);
   const [safePreviewResult, setSafePreviewResult] = useState<SafeLinkPreviewResult | null>(null);
   const [isSafePreviewChecking, setIsSafePreviewChecking] = useState(false);
+  const [sharedImageStatus, setSharedImageStatus] = useState("");
   const signalResult = useMemo(() => extractScamSignals(text), [text]);
   const manualUrlContexts = useMemo(
     () => (imageContext ? [] : analyzeUrlsLocally(signalResult.urls, "manual")),
@@ -117,11 +123,43 @@ export function AnalyzeScreen() {
   const safePreviewStatusText = getPreviewStatusText(safePreviewResult);
   const modelLabel = getTrustShieldModelModeLabel(modelMode);
 
+  const handleSelectedImage = useCallback(async (imageUri: string, source?: "android_share") => {
+    setIsOcrLoading(true);
+    setOcrError("");
+    if (source === "android_share") {
+      setSharedImageStatus("Shared screenshot received.");
+    }
+
+    try {
+      const result = await extractImageContext(imageUri);
+      setImageContext(result);
+      setText(result.combined_text);
+      setSafePreviewResult(null);
+      if (source === "android_share") {
+        setSharedImageStatus("Shared screenshot received.");
+        await clearSharedImage();
+      }
+    } catch {
+      setOcrError("Could not read enough text or QR content. Try a clearer image.");
+    } finally {
+      setIsOcrLoading(false);
+    }
+  }, []);
+
+  const loadSharedImageIfAvailable = useCallback(async () => {
+    const shared = await getInitialSharedImage();
+    if (!shared.imageUri) return;
+
+    await handleSelectedImage(shared.imageUri, "android_share");
+  }, [handleSelectedImage]);
+
   useFocusEffect(
     useCallback(() => {
       setModelMode(getTrustShieldModelMode());
       setIsGemmaReady(getGemmaRuntimeState().ready);
-    }, []),
+      cleanupOldSharedImages().catch(() => undefined);
+      loadSharedImageIfAvailable().catch(() => undefined);
+    }, [loadSharedImageIfAvailable]),
   );
 
   async function analyze() {
@@ -198,23 +236,9 @@ export function AnalyzeScreen() {
     }
   }
 
-  async function handleSelectedImage(imageUri: string) {
-    setIsOcrLoading(true);
-    setOcrError("");
-    try {
-      const result = await extractImageContext(imageUri);
-      setImageContext(result);
-      setText(result.combined_text);
-      setSafePreviewResult(null);
-    } catch {
-      setOcrError("Could not read enough text or QR content. Try a clearer image.");
-    } finally {
-      setIsOcrLoading(false);
-    }
-  }
-
   async function detectQrForAnalysis() {
     setOcrError("");
+    setSharedImageStatus("");
     try {
       const result = await scanCodeWithCamera();
       if (result.raw_values.length === 0) {
@@ -236,6 +260,7 @@ export function AnalyzeScreen() {
 
   async function pickScreenshotForAnalysis() {
     setOcrError("");
+    setSharedImageStatus("");
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
@@ -315,6 +340,7 @@ export function AnalyzeScreen() {
             setText(value);
             setImageContext(null);
             setSafePreviewResult(null);
+            setSharedImageStatus("");
           }}
           placeholder="OCR text will appear here, or paste/type a message"
           placeholderTextColor="#64748b"
@@ -325,6 +351,14 @@ export function AnalyzeScreen() {
         {imageContext ? (
           <View style={sharedStyles.card}>
             <Text style={sharedStyles.cardTitle}>Image context extracted</Text>
+            {sharedImageStatus ? (
+              <View style={styles.sharedCard}>
+                <Text style={styles.sharedTitle}>{sharedImageStatus}</Text>
+                <Text style={styles.sharedText}>
+                  TrustShield extracted this image locally using OCR and QR detection. No cloud AI used.
+                </Text>
+              </View>
+            ) : null}
             <Text style={styles.contextText}>
               Visible text found: {imageContext.context_summary.has_ocr_text ? "Yes" : "No"}
             </Text>
@@ -456,6 +490,26 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   contextText: {
+    color: "#334155",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 23,
+  },
+  sharedCard: {
+    backgroundColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 6,
+    padding: 12,
+  },
+  sharedTitle: {
+    color: "#0f172a",
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 24,
+  },
+  sharedText: {
     color: "#334155",
     fontSize: 16,
     fontWeight: "700",

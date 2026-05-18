@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
@@ -8,8 +8,11 @@ import {
   requestNotificationPermission,
   showQuickNotification,
 } from '../src/native/TrustShieldQuickNotification';
+import { getInitialSharedImage } from '../src/native/TrustShieldShareReceiver';
 
 export default function RootLayout() {
+  const router = useRouter();
+
   useEffect(() => {
     let isMounted = true;
 
@@ -30,9 +33,23 @@ export default function RootLayout() {
 
     enableQuickAccess();
 
+    async function routePendingShare() {
+      try {
+        const shared = await getInitialSharedImage();
+        if (isMounted && shared.imageUri) {
+          router.replace('/analyze' as never);
+        }
+      } catch {
+        // Share receiver may not exist until the custom dev client is rebuilt.
+      }
+    }
+
+    routePendingShare();
+
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         enableQuickAccess();
+        routePendingShare();
       }
     });
 
@@ -40,7 +57,7 @@ export default function RootLayout() {
       isMounted = false;
       subscription.remove();
     };
-  }, []);
+  }, [router]);
 
   return (
     <>

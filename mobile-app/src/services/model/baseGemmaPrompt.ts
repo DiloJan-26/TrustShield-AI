@@ -2,8 +2,9 @@ import type { TrustShieldModelInput } from "./modelTypes";
 import { TRUSTSHIELD_MODEL_CONFIG } from "./modelConfig";
 
 export function buildBaseGemmaPrompt(input: TrustShieldModelInput): string {
-  const playbook = input.retrieved_playbook?.slice(0, 1).map((entry) => ({
+  const playbook = input.retrieved_playbook?.slice(0, 3).map((entry) => ({
     id: entry.id,
+    title: entry.title.slice(0, 48),
     risk: entry.risk_level,
     type: entry.scam_type,
   }));

@@ -65,6 +65,44 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
     ],
   },
   {
+    id: "fake_bank_account_blocked_warning",
+    title: "Fake bank account blocked warning",
+    risk_level: "dangerous",
+    scam_type: "bank_account_blocked_phishing",
+    match_signals: [
+      "bank_impersonation",
+      "account_blocked_threat",
+      "urgent_action",
+      "unknown_url",
+      "external_action_request",
+    ],
+    match_keywords: ["account blocked", "suspended", "verify account", "kyc", "mobile banking", "internet banking"],
+    explanation:
+      "Scammers pretend a bank account is blocked so users verify through a fake link or share private details.",
+    safe_action: "Do not use the message link. Open the official banking app or call the bank's official number.",
+    user_checklist: [
+      "Open the bank app manually.",
+      "Do not enter login details from a message link.",
+      "Call the bank using the official number printed on the card or website.",
+    ],
+  },
+  {
+    id: "fake_kyc_update_scam",
+    title: "Fake KYC update scam",
+    risk_level: "dangerous",
+    scam_type: "fake_kyc_update_scam",
+    match_signals: ["kyc_update_request", "bank_impersonation", "unknown_url", "sensitive_action_request"],
+    match_keywords: ["kyc update", "update kyc", "verify kyc", "account verification", "nic", "passport"],
+    explanation:
+      "Fake KYC messages try to collect banking, identity, or login details through a link or form.",
+    safe_action: "Do not submit details from the message. Verify KYC only inside the official bank app or branch.",
+    user_checklist: [
+      "Do not upload NIC or bank details from a message link.",
+      "Check the official bank app or branch.",
+      "Call the bank using an official number if the account warning worries you.",
+    ],
+  },
+  {
     id: "fake_delivery_fee_scam",
     title: "Fake delivery fee scam",
     risk_level: "dangerous",
@@ -77,6 +115,22 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
       "Check tracking in the courier app or website.",
       "Do not pay fees from message links.",
       "Verify the courier and tracking number.",
+    ],
+  },
+  {
+    id: "customs_parcel_fee_scam",
+    title: "Customs parcel fee scam",
+    risk_level: "dangerous",
+    scam_type: "customs_parcel_fee_scam",
+    match_signals: ["customs_fee_request", "delivery_fee_request", "payment_request", "unknown_url"],
+    match_keywords: ["customs", "parcel held", "clearance fee", "import duty", "delivery tax", "shipping fee"],
+    explanation:
+      "Fake customs or parcel messages ask for fees before release, often through unsafe payment links.",
+    safe_action: "Do not pay from the message. Check the courier or customs notice through official channels.",
+    user_checklist: [
+      "Check tracking directly on the courier website or app.",
+      "Do not enter card details from the message.",
+      "Verify customs fees through official sources before paying.",
     ],
   },
   {
@@ -95,6 +149,38 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
     ],
   },
   {
+    id: "part_time_task_rating_job_scam",
+    title: "Part-time task or rating job scam",
+    risk_level: "dangerous",
+    scam_type: "part_time_task_job_scam",
+    match_signals: ["task_job_offer", "job_offer_unrealistic", "payment_request", "registration_fee"],
+    match_keywords: ["part time", "rating job", "like videos", "complete tasks", "telegram job", "daily profit"],
+    explanation:
+      "Task job scams pay small rewards first, then ask for deposits or fees to unlock larger earnings.",
+    safe_action: "Do not deposit money for online tasks. Verify the employer outside the chat or message.",
+    user_checklist: [
+      "Be careful if a job asks for deposits.",
+      "Do not trust guaranteed daily income claims.",
+      "Check the company independently before sharing details.",
+    ],
+  },
+  {
+    id: "loan_approval_fee_scam",
+    title: "Loan approval fee scam",
+    risk_level: "dangerous",
+    scam_type: "loan_approval_fee_scam",
+    match_signals: ["loan_offer", "loan_approval_fee", "payment_request"],
+    match_keywords: ["loan approved", "instant loan", "processing fee", "approval fee", "quick cash"],
+    explanation:
+      "Fake loan messages promise fast approval and ask for an upfront processing or approval fee.",
+    safe_action: "Do not pay loan fees from a message. Use licensed banks or finance companies only.",
+    user_checklist: [
+      "Check whether the lender is licensed.",
+      "Do not pay an upfront approval fee.",
+      "Avoid sending NIC or bank details through chat links.",
+    ],
+  },
+  {
     id: "qr_payment_or_hidden_link_scam",
     title: "QR payment or hidden link scam",
     risk_level: "dangerous",
@@ -110,6 +196,38 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
     ],
   },
   {
+    id: "investment_double_money_scam",
+    title: "Investment or double-money scam",
+    risk_level: "dangerous",
+    scam_type: "investment_profit_scam",
+    match_signals: ["investment_profit_promise", "guaranteed_profit_claim", "payment_request"],
+    match_keywords: ["double your money", "guaranteed profit", "daily return", "investment plan", "deposit now"],
+    explanation:
+      "Scammers promise guaranteed profit or doubled money to make users deposit funds quickly.",
+    safe_action: "Do not send money. Check investment offers with a licensed financial adviser or regulator.",
+    user_checklist: [
+      "Be suspicious of guaranteed profit.",
+      "Do not deposit money through chat or message links.",
+      "Check whether the company is registered and regulated.",
+    ],
+  },
+  {
+    id: "crypto_profit_scam",
+    title: "Crypto profit scam",
+    risk_level: "dangerous",
+    scam_type: "crypto_profit_scam",
+    match_signals: ["crypto_profit_promise", "guaranteed_profit_claim", "payment_request"],
+    match_keywords: ["crypto", "bitcoin", "usdt", "binance", "profit daily", "trading signal"],
+    explanation:
+      "Crypto scams use profit promises and urgency to collect deposits or wallet details.",
+    safe_action: "Do not transfer crypto or money from the message. Verify any platform independently.",
+    user_checklist: [
+      "Do not share wallet keys or recovery phrases.",
+      "Avoid guaranteed crypto profit claims.",
+      "Check the platform outside the message.",
+    ],
+  },
+  {
     id: "suspicious_short_link",
     title: "Suspicious shortened link",
     risk_level: "suspicious",
@@ -122,6 +240,22 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
       "Check sender/source.",
       "Avoid shortened links in unexpected messages.",
       "Use the official app or website manually.",
+    ],
+  },
+  {
+    id: "phishing_login_page_link",
+    title: "Phishing login page link",
+    risk_level: "dangerous",
+    scam_type: "phishing_login_page_link",
+    match_signals: ["phishing_login_page", "unknown_url", "password_request", "external_action_request"],
+    match_keywords: ["login", "sign in", "verify account", "password", "secure portal", "update details"],
+    explanation:
+      "Phishing links imitate login pages to steal passwords, OTPs, or account details.",
+    safe_action: "Do not log in through the message. Type the official website address or use the official app.",
+    user_checklist: [
+      "Do not enter passwords from a message link.",
+      "Check the domain carefully.",
+      "Use the official app or typed website address.",
     ],
   },
   {
@@ -170,6 +304,22 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
     ],
   },
   {
+    id: "tax_revenue_fine_payment_scam",
+    title: "Tax, revenue, or fine payment scam",
+    risk_level: "dangerous",
+    scam_type: "tax_or_fine_payment_scam",
+    match_signals: ["tax_fine_payment_request", "government_impersonation", "payment_request", "urgent_action"],
+    match_keywords: ["tax", "revenue", "fine", "penalty", "court", "police fine", "pay now"],
+    explanation:
+      "Scammers impersonate authorities and threaten fines or penalties to force quick payment.",
+    safe_action: "Do not pay from the message. Verify through the official office, website, or known phone number.",
+    user_checklist: [
+      "Check the official government or police channel.",
+      "Do not pay through unknown links.",
+      "Ask a trusted person before responding to threats.",
+    ],
+  },
+  {
     id: "fake_telco_offer",
     title: "Fake telco offer",
     risk_level: "suspicious",
@@ -182,6 +332,22 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
       "Open the official telco app manually.",
       "Check the offer at an official outlet if needed.",
       "Do not claim through unknown links.",
+    ],
+  },
+  {
+    id: "sim_upgrade_verification_scam",
+    title: "SIM upgrade or verification scam",
+    risk_level: "dangerous",
+    scam_type: "sim_upgrade_verification_scam",
+    match_signals: ["sim_upgrade_request", "telco_offer_claim", "otp_request", "sensitive_action_request"],
+    match_keywords: ["sim upgrade", "sim verification", "4g upgrade", "5g upgrade", "connection suspend", "reload pin"],
+    explanation:
+      "SIM verification scams pretend to be telcos and ask for codes or details to take over accounts.",
+    safe_action: "Do not share verification codes. Visit the official telco app, outlet, or hotline.",
+    user_checklist: [
+      "Never share SMS verification codes.",
+      "Use the official telco app or outlet.",
+      "Do not follow SIM upgrade links from unknown messages.",
     ],
   },
   {
@@ -198,6 +364,38 @@ export const SCAM_PLAYBOOK: ScamPlaybookEntry[] = [
       "Use the official telco app.",
       "Do not share OTP or PIN.",
       "Ignore links if the sender is unclear.",
+    ],
+  },
+  {
+    id: "fake_refund_cashback_scam",
+    title: "Fake refund or cashback scam",
+    risk_level: "dangerous",
+    scam_type: "fake_refund_or_cashback_scam",
+    match_signals: ["refund_or_cashback_claim", "payment_request", "unknown_url", "sensitive_action_request"],
+    match_keywords: ["refund", "cashback", "reversal", "claim refund", "card details", "bank details"],
+    explanation:
+      "Refund scams offer money back, then ask for card, bank, login, or payment details.",
+    safe_action: "Do not enter card or bank details from the message. Check refunds inside the official app.",
+    user_checklist: [
+      "Check refunds in the official app or statement.",
+      "Do not share card details to receive money.",
+      "Call the company using an official contact if unsure.",
+    ],
+  },
+  {
+    id: "facebook_marketplace_advance_payment_scam",
+    title: "Marketplace advance payment scam",
+    risk_level: "dangerous",
+    scam_type: "marketplace_advance_payment_scam",
+    match_signals: ["marketplace_advance_payment", "advance_payment_request", "payment_request"],
+    match_keywords: ["facebook marketplace", "advance payment", "reserve item", "courier payment", "deposit first"],
+    explanation:
+      "Marketplace scammers ask for deposits, courier fees, or advance payments before the item is verified.",
+    safe_action: "Do not pay in advance to unknown sellers or buyers. Meet safely and verify the item first.",
+    user_checklist: [
+      "Avoid deposits to unknown people.",
+      "Verify the item and seller before payment.",
+      "Use safer marketplace payment methods where available.",
     ],
   },
   {
@@ -276,8 +474,16 @@ function hasDangerousSignals(signals: string[]): boolean {
       "qr_contains_payment_link",
       "registration_fee",
       "delivery_fee_request",
+      "customs_fee_request",
       "fake_gift_card_offer",
       "high_value_reward",
+      "kyc_update_request",
+      "sim_upgrade_request",
+      "loan_approval_fee",
+      "tax_fine_payment_request",
+      "advance_payment_request",
+      "marketplace_advance_payment",
+      "phishing_login_page",
     ].includes(signal),
   );
 }
