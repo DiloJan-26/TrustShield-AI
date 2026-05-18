@@ -1,3 +1,7 @@
+import type { QrSafePreviewResult } from "./qrSafePreview";
+import type { SafeLinkPreviewResult } from "./safeLinkPreview";
+import type { UrlContext } from "./urlIntelligence";
+
 export type BaseRisk = "safe" | "suspicious" | "dangerous";
 
 export type ScamSignalResult = {
@@ -7,6 +11,13 @@ export type ScamSignalResult = {
   evidence: string[];
   scam_type_hint: string;
 };
+
+export type QrSafePreviewSignalResult = {
+  signals: string[];
+  evidence: string[];
+};
+
+export type SafeLinkPreviewSignalResult = QrSafePreviewSignalResult;
 
 const SHORTENER_PATTERN = /\b(?:bit\.ly|tinyurl\.com|shorturl\.at|t\.co|cutt\.ly)\b/i;
 const SUSPICIOUS_TLD_PATTERN = /\.(?:store|info|online|top|click|xyz)\b/i;
@@ -312,6 +323,19 @@ export function computeBaseRisk(signals: string[]): BaseRisk {
     "brand_impersonation",
     "telco_offer_claim",
     "address_confirmation_request",
+    "qr_safe_preview_failed",
+    "qr_preview_no_internet",
+    "qr_preview_redirect_detected",
+    "qr_preview_domain_mismatch",
+    "qr_preview_login_or_payment_page",
+    "qr_preview_reward_claim_page",
+    "safe_link_preview_failed",
+    "safe_link_preview_no_internet",
+    "safe_link_preview_blocked",
+    "safe_link_preview_redirect_detected",
+    "safe_link_preview_domain_mismatch",
+    "safe_link_preview_login_or_payment_page",
+    "safe_link_preview_reward_claim_page",
   ];
 
   if (signalSet.has("telco_offer_claim") && !hasUnknownOrShortLink(signalSet)) {
@@ -389,8 +413,110 @@ function buildEvidence(signals: string[], urls: string[]): string[] {
   if (signals.includes("safe_transaction_notice")) evidence.push("Safe-looking transaction notice with no action request.");
   if (signals.includes("safe_delivery_notice")) evidence.push("Looks like a delivery notice without a payment or link request.");
   if (signals.includes("no_sensitive_request")) evidence.push("No OTP, password, payment, or link request found.");
+  if (signals.includes("qr_safe_preview_available")) evidence.push("QR Safe Preview metadata was available.");
+  if (signals.includes("qr_safe_preview_failed")) evidence.push("QR Safe Preview could not check the website.");
+  if (signals.includes("qr_preview_no_internet")) evidence.push("QR Safe Preview was skipped because internet was unavailable.");
+  if (signals.includes("qr_preview_redirect_detected")) evidence.push("QR Safe Preview detected a redirect.");
+  if (signals.includes("qr_preview_domain_mismatch")) evidence.push("QR Safe Preview final domain differs from the original QR domain.");
+  if (signals.includes("qr_preview_login_or_payment_page")) evidence.push("QR preview text mentions login, account, OTP, KYC, wallet, or payment.");
+  if (signals.includes("qr_preview_reward_claim_page")) evidence.push("QR preview text mentions a prize, reward, gift, or claim.");
+  if (signals.includes("safe_link_preview_available")) evidence.push("Safety Preview metadata was available.");
+  if (signals.includes("safe_link_preview_failed")) evidence.push("Safety Preview could not check the website.");
+  if (signals.includes("safe_link_preview_no_internet")) evidence.push("Safety Preview was skipped because internet was unavailable.");
+  if (signals.includes("safe_link_preview_blocked")) evidence.push("Safety Preview blocked the link for safety.");
+  if (signals.includes("safe_link_preview_redirect_detected")) evidence.push("Safety Preview detected a redirect.");
+  if (signals.includes("safe_link_preview_domain_mismatch")) evidence.push("Safety Preview final domain differs from the original domain.");
+  if (signals.includes("safe_link_preview_login_or_payment_page")) evidence.push("Safety preview text mentions login, account, OTP, KYC, wallet, or payment.");
+  if (signals.includes("safe_link_preview_reward_claim_page")) evidence.push("Safety preview text mentions a prize, reward, gift, or claim.");
 
   return unique(evidence);
+}
+
+function getPreviewText(preview: SafeLinkPreviewResult): string {
+  return [
+    preview.page_title,
+    preview.meta_description,
+    preview.og_title,
+    preview.og_description,
+    preview.preview_text,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getOriginalDomain(preview: SafeLinkPreviewResult, urlContexts: UrlContext[]): string | undefined {
+  const context = urlContexts.find((item) => item.url === preview.original_url);
+  if (context?.domain) return context.domain;
+
+  try {
+    const withScheme = /^https?:\/\//i.test(preview.original_url)
+      ? preview.original_url
+      : `https://${preview.original_url}`;
+    return new URL(withScheme).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractSafeLinkPreviewSignals(
+  previews: SafeLinkPreviewResult[] = [],
+  urlContexts: UrlContext[] = [],
+): SafeLinkPreviewSignalResult {
+  const signals: string[] = [];
+  const evidence: string[] = [];
+
+  previews.forEach((preview) => {
+    if (preview.status === "completed") {
+      signals.push("safe_link_preview_available");
+      evidence.push("Safety Preview checked limited public website metadata.");
+    }
+    if (preview.status === "failed") signals.push("safe_link_preview_failed");
+    if (preview.status === "no_internet") signals.push("safe_link_preview_no_internet");
+    if (preview.status === "blocked") signals.push("safe_link_preview_blocked");
+
+    const originalDomain = getOriginalDomain(preview, urlContexts);
+    if (preview.final_url && preview.final_url !== preview.original_url) {
+      signals.push("safe_link_preview_redirect_detected");
+    }
+    if (originalDomain && preview.domain && preview.domain !== originalDomain) {
+      signals.push("safe_link_preview_domain_mismatch");
+    }
+
+    const previewText = getPreviewText(preview);
+    if (/login|verify|payment|pay|wallet|otp|kyc|account blocked|account|blocked/i.test(previewText)) {
+      signals.push("safe_link_preview_login_or_payment_page");
+    }
+    if (/claim|reward|prize|gift/i.test(previewText)) {
+      signals.push("safe_link_preview_reward_claim_page");
+    }
+  });
+
+  return {
+    signals: unique(signals),
+    evidence: unique(evidence),
+  };
+}
+
+export function extractQrSafePreviewSignals(
+  previews: QrSafePreviewResult[] = [],
+  urlContexts: UrlContext[] = [],
+): QrSafePreviewSignalResult {
+  const safeSignals = extractSafeLinkPreviewSignals(previews, urlContexts);
+
+  return {
+    signals: safeSignals.signals.map((signal) =>
+      signal
+        .replace("safe_link_preview_available", "qr_safe_preview_available")
+        .replace("safe_link_preview_failed", "qr_safe_preview_failed")
+        .replace("safe_link_preview_no_internet", "qr_preview_no_internet")
+        .replace("safe_link_preview_blocked", "qr_safe_preview_failed")
+        .replace("safe_link_preview_redirect_detected", "qr_preview_redirect_detected")
+        .replace("safe_link_preview_domain_mismatch", "qr_preview_domain_mismatch")
+        .replace("safe_link_preview_login_or_payment_page", "qr_preview_login_or_payment_page")
+        .replace("safe_link_preview_reward_claim_page", "qr_preview_reward_claim_page"),
+    ),
+    evidence: safeSignals.evidence,
+  };
 }
 
 function getScamTypeHint(signals: string[], baseRisk: BaseRisk): string {

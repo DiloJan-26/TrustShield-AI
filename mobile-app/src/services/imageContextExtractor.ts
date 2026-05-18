@@ -1,6 +1,7 @@
 import { scanBarcodes } from "../native/TrustShieldBarcode";
 import { recognizeText } from "../native/TrustShieldOCR";
 import { extractUrls } from "./scamSignalExtractor";
+import { analyzeUrlsLocally, type UrlContext } from "./urlIntelligence";
 
 export type BarcodeContextItem = {
   raw_value: string;
@@ -18,6 +19,10 @@ export type ImageContextResult = {
   barcode_items: BarcodeContextItem[];
   combined_text: string;
   urls: string[];
+  visible_text_urls: string[];
+  qr_barcode_urls: string[];
+  all_urls: string[];
+  url_contexts: UrlContext[];
   context_summary: {
     has_ocr_text: boolean;
     has_barcode: boolean;
@@ -48,7 +53,8 @@ export function buildBarcodeOnlyContext(barcodeItems: BarcodeContextItem[]): Ima
     barcodeItems.map((item) => item.raw_value || item.display_value || ""),
   );
   const combinedText = buildCombinedText("", barcodeValues);
-  const urls = unique(barcodeValues.flatMap((value) => extractUrls(value)));
+  const qrBarcodeUrls = unique(barcodeValues.flatMap((value) => extractUrls(value)));
+  const urlContexts = analyzeUrlsLocally(qrBarcodeUrls, "qr_barcode");
 
   return {
     ocr_text: "",
@@ -57,11 +63,15 @@ export function buildBarcodeOnlyContext(barcodeItems: BarcodeContextItem[]): Ima
     barcode_values: barcodeValues,
     barcode_items: barcodeItems.filter((item) => item.raw_value.trim().length > 0),
     combined_text: combinedText,
-    urls,
+    urls: qrBarcodeUrls,
+    visible_text_urls: [],
+    qr_barcode_urls: qrBarcodeUrls,
+    all_urls: qrBarcodeUrls,
+    url_contexts: urlContexts,
     context_summary: {
       has_ocr_text: false,
       has_barcode: barcodeValues.length > 0,
-      url_count: urls.length,
+      url_count: qrBarcodeUrls.length,
     },
   };
 }
@@ -91,7 +101,13 @@ export async function extractImageContext(imageUri: string): Promise<ImageContex
     );
   }
 
-  const urls = unique([ocrText, ...barcodeValues].flatMap((value) => extractUrls(value)));
+  const visibleTextUrls = unique(extractUrls(ocrText));
+  const qrBarcodeUrls = unique(barcodeValues.flatMap((value) => extractUrls(value)));
+  const allUrls = unique([...visibleTextUrls, ...qrBarcodeUrls]);
+  const urlContexts = [
+    ...analyzeUrlsLocally(visibleTextUrls, "visible_text"),
+    ...analyzeUrlsLocally(qrBarcodeUrls, "qr_barcode"),
+  ];
 
   return {
     imageUri,
@@ -101,11 +117,15 @@ export async function extractImageContext(imageUri: string): Promise<ImageContex
     barcode_values: barcodeValues,
     barcode_items: barcode.barcodes.filter((item) => item.raw_value.trim().length > 0),
     combined_text: combinedText,
-    urls,
+    urls: allUrls,
+    visible_text_urls: visibleTextUrls,
+    qr_barcode_urls: qrBarcodeUrls,
+    all_urls: allUrls,
+    url_contexts: urlContexts,
     context_summary: {
       has_ocr_text: ocrText.length > 0,
       has_barcode: barcodeValues.length > 0,
-      url_count: urls.length,
+      url_count: allUrls.length,
     },
   };
 }

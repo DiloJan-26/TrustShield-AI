@@ -1,3 +1,7 @@
+import type { QrSafePreviewResult } from "../services/qrSafePreview";
+import type { SafeLinkPreviewResult } from "../services/safeLinkPreview";
+import type { UrlContext } from "../services/urlIntelligence";
+
 export type RiskLevel = "safe" | "suspicious" | "dangerous";
 
 export type ScamIdentity = {
@@ -28,4 +32,7 @@ export type TrustShieldResult = {
   json_valid?: boolean;
   latency_ms?: number;
   raw_model_output?: string;
+  qr_safe_preview?: QrSafePreviewResult[];
+  safe_link_previews?: SafeLinkPreviewResult[];
+  url_contexts?: UrlContext[];
 };

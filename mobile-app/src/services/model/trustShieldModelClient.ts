@@ -9,6 +9,18 @@ import {
 } from "./jsonModelParser";
 import type { TrustShieldModelInput, TrustShieldModelOutput } from "./modelTypes";
 
+function attachInputContext(
+  output: TrustShieldModelOutput,
+  input: TrustShieldModelInput,
+): TrustShieldModelOutput {
+  return {
+    ...output,
+    qr_safe_preview: input.qr_safe_preview,
+    safe_link_previews: input.safe_link_previews,
+    url_contexts: input.url_contexts,
+  };
+}
+
 function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
   const mockResult = analyzeMockMessage(input.ocr_text, {
     urls: input.detected_urls,
@@ -19,7 +31,7 @@ function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
   });
   const fallbackShape = buildLocalFallbackOutput(input);
 
-  return {
+  return attachInputContext({
     ...fallbackShape,
     risk_level: mockResult.risk_level,
     confidence: mockResult.confidence,
@@ -31,7 +43,7 @@ function analyzeWithMock(input: TrustShieldModelInput): TrustShieldModelOutput {
     model_source: "mock",
     fallback_used: false,
     json_valid: true,
-  };
+  }, input);
 }
 
 export async function analyzeWithTrustShieldModel(
@@ -49,9 +61,12 @@ export async function analyzeWithTrustShieldModel(
   try {
     const ready = await isReady();
     if (!ready) {
-      return buildLocalSafetyFallback(
+      return attachInputContext(
+        buildLocalSafetyFallback(
+          limitedInput,
+          "Base Gemma 4 E2B is not loaded. Using local safety fallback.",
+        ),
         limitedInput,
-        "Base Gemma 4 E2B is not loaded. Using local safety fallback.",
       );
     }
 
@@ -62,17 +77,20 @@ export async function analyzeWithTrustShieldModel(
     });
     const parsed = parseTrustShieldModelOutput(raw.text, limitedInput);
 
-    return {
+    return attachInputContext({
       ...parsed,
       latency_ms: raw.latency_ms,
       model_source: parsed.model_source === "local_fallback" ? "local_fallback" : "base_gemma",
       raw_model_output: raw.text,
-    };
+    }, limitedInput);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Gemma generation error.";
-    return buildLocalSafetyFallback(
+    return attachInputContext(
+      buildLocalSafetyFallback(
+        limitedInput,
+        `Could not complete local model analysis: ${message}. Using local safety fallback.`,
+      ),
       limitedInput,
-      `Could not complete local model analysis: ${message}. Using local safety fallback.`,
     );
   }
 }

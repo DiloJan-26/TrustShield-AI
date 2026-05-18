@@ -1,3 +1,7 @@
+import type { QrSafePreviewResult } from "../qrSafePreview";
+import type { SafeLinkPreviewResult } from "../safeLinkPreview";
+import type { UrlContext } from "../urlIntelligence";
+
 export type ModelMode = "mock" | "base_gemma";
 
 export type ModelSource = "mock" | "base_gemma" | "local_fallback";
@@ -23,11 +27,16 @@ export type TrustShieldModelInput = {
   evidence: string[];
   scam_type_hint?: string;
   retrieved_playbook?: TrustShieldPlaybookItem[];
+  qr_safe_preview?: QrSafePreviewResult[];
+  safe_link_previews?: SafeLinkPreviewResult[];
+  url_contexts?: UrlContext[];
   debug_info?: {
     rule_signals?: string[];
     scam_type_hint?: string;
     playbook_ids?: string[];
     extraction_source?: "manual" | "ocr" | "qr" | "ocr_qr";
+    qr_preview_used?: boolean;
+    url_preview_used?: boolean;
   };
 };
 
@@ -54,4 +63,7 @@ export type TrustShieldModelOutput = {
   json_valid?: boolean;
   latency_ms?: number;
   raw_model_output?: string;
+  qr_safe_preview?: QrSafePreviewResult[];
+  safe_link_previews?: SafeLinkPreviewResult[];
+  url_contexts?: UrlContext[];
 };

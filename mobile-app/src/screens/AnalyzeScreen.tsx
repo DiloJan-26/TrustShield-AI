@@ -19,14 +19,66 @@ import {
 import { analyzeWithTrustShieldModel } from "../services/model/trustShieldModelClient";
 import type { ModelMode } from "../services/model/modelTypes";
 import {
+  checkSafeLinkPreview,
+  type SafeLinkPreviewKind,
+  type SafeLinkPreviewResult,
+} from "../services/safeLinkPreview";
+import {
   retrieveScamPlaybookMatches,
   toCompactPlaybookForPrompt,
 } from "../services/scamPlaybook";
-import { extractScamSignals } from "../services/scamSignalExtractor";
+import {
+  computeBaseRisk,
+  extractSafeLinkPreviewSignals,
+  extractScamSignals,
+} from "../services/scamSignalExtractor";
+import {
+  analyzeUrlsLocally,
+  summarizeUrlContext,
+  type UrlContext,
+} from "../services/urlIntelligence";
 import { sharedStyles } from "./sharedStyles";
 
 function unique(items: string[]): string[] {
   return [...new Set(items)];
+}
+
+function uniqueUrlContexts(items: UrlContext[]): UrlContext[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.source}:${item.url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getUrlRiskScore(context: UrlContext): number {
+  let score = 0;
+  if (context.brand_impersonation_hint) score += 5;
+  if (context.suspicious_tld) score += 4;
+  if (context.is_shortened) score += 3;
+  if (!context.trusted_domain) score += 2;
+  if ((context.path_keywords?.length ?? 0) > 0) score += 1;
+  return score;
+}
+
+function selectHighestRiskUrlContext(contexts: UrlContext[]): UrlContext | undefined {
+  return [...contexts].sort((a, b) => getUrlRiskScore(b) - getUrlRiskScore(a))[0];
+}
+
+function getPreviewStatusText(result: SafeLinkPreviewResult | null): string {
+  if (!result) return "";
+  if (result.status === "no_internet") {
+    return result.error_message ?? "Internet is off. Safety Preview needs internet, but you can still analyze locally.";
+  }
+  if (result.status === "blocked") {
+    return `Preview blocked for safety: ${result.blocked_reason ?? "unsafe link"}`;
+  }
+  if (result.status === "failed") {
+    return result.error_message ?? "Could not check this website preview. You can still analyze locally.";
+  }
+  return "";
 }
 
 export function AnalyzeScreen() {
@@ -39,7 +91,30 @@ export function AnalyzeScreen() {
   const [analysisError, setAnalysisError] = useState("");
   const [modelMode, setModelMode] = useState<ModelMode>(getTrustShieldModelMode());
   const [isGemmaReady, setIsGemmaReady] = useState(getGemmaRuntimeState().ready);
+  const [safePreviewResult, setSafePreviewResult] = useState<SafeLinkPreviewResult | null>(null);
+  const [isSafePreviewChecking, setIsSafePreviewChecking] = useState(false);
   const signalResult = useMemo(() => extractScamSignals(text), [text]);
+  const manualUrlContexts = useMemo(
+    () => (imageContext ? [] : analyzeUrlsLocally(signalResult.urls, "manual")),
+    [imageContext, signalResult.urls],
+  );
+  const qrUrlContexts = useMemo(
+    () => imageContext?.url_contexts.filter((context) => context.source === "qr_barcode") ?? [],
+    [imageContext],
+  );
+  const visibleOrManualUrlContexts = useMemo(
+    () =>
+      imageContext
+        ? imageContext.url_contexts.filter((context) => context.source === "visible_text")
+        : manualUrlContexts,
+    [imageContext, manualUrlContexts],
+  );
+  const primaryQrContext = selectHighestRiskUrlContext(qrUrlContexts);
+  const primaryUrlContext = selectHighestRiskUrlContext(visibleOrManualUrlContexts);
+  const previewContext = primaryQrContext ?? (!imageContext?.context_summary.has_barcode ? primaryUrlContext : undefined);
+  const previewKind: SafeLinkPreviewKind | null = primaryQrContext ? "qr" : previewContext ? "url" : null;
+  const shouldShowSafePreview = Boolean(previewContext && previewKind);
+  const safePreviewStatusText = getPreviewStatusText(safePreviewResult);
   const modelLabel = getTrustShieldModelModeLabel(modelMode);
 
   useFocusEffect(
@@ -57,25 +132,40 @@ export function AnalyzeScreen() {
     setAnalysisError("");
     try {
       const detectedUrls = unique([...signalResult.urls, ...(imageContext?.urls ?? [])]);
+      const urlContexts = uniqueUrlContexts([
+        ...(imageContext?.url_contexts ?? []),
+        ...manualUrlContexts,
+      ]);
+      const safeLinkPreviews = safePreviewResult ? [safePreviewResult] : [];
+      const previewSignalResult = extractSafeLinkPreviewSignals(safeLinkPreviews, urlContexts);
+      const detectedSignals = unique([...signalResult.signals, ...previewSignalResult.signals]);
+      const evidence = unique([...signalResult.evidence, ...previewSignalResult.evidence]);
+      const baseRisk = computeBaseRisk(detectedSignals);
       const playbookMatches = retrieveScamPlaybookMatches({
         text: message,
-        signals: signalResult.signals,
+        signals: detectedSignals,
         urls: detectedUrls,
         scam_type_hint: signalResult.scam_type_hint,
       });
       const modelResult = await analyzeWithTrustShieldModel({
         ocr_text: message,
         detected_urls: detectedUrls,
-        detected_signals: signalResult.signals,
-        base_risk: signalResult.base_risk,
-        rule_risk_hint: signalResult.base_risk,
-        evidence: signalResult.evidence,
+        detected_signals: detectedSignals,
+        base_risk: baseRisk,
+        rule_risk_hint: baseRisk,
+        evidence,
         scam_type_hint: signalResult.scam_type_hint,
         retrieved_playbook: toCompactPlaybookForPrompt(playbookMatches),
+        url_contexts: urlContexts,
+        qr_safe_preview:
+          safeLinkPreviews[0]?.kind === "qr" ? safeLinkPreviews : undefined,
+        safe_link_previews: safeLinkPreviews.length > 0 ? safeLinkPreviews : undefined,
         debug_info: {
-          rule_signals: signalResult.signals,
+          rule_signals: detectedSignals,
           scam_type_hint: signalResult.scam_type_hint,
           playbook_ids: playbookMatches.map((entry) => entry.id),
+          qr_preview_used: safeLinkPreviews.some((preview) => preview.kind === "qr"),
+          url_preview_used: safeLinkPreviews.some((preview) => preview.kind === "url"),
           extraction_source: imageContext
             ? imageContext.context_summary.has_ocr_text && imageContext.context_summary.has_barcode
               ? "ocr_qr"
@@ -90,7 +180,7 @@ export function AnalyzeScreen() {
         pathname: "/result",
         params: {
           text: message,
-          signals: JSON.stringify(signalResult.signals),
+          signals: JSON.stringify(detectedSignals),
           result: JSON.stringify({
             ...modelResult,
             tamil_warning: "",
@@ -115,6 +205,7 @@ export function AnalyzeScreen() {
       const result = await extractImageContext(imageUri);
       setImageContext(result);
       setText(result.combined_text);
+      setSafePreviewResult(null);
     } catch {
       setOcrError("Could not read enough text or QR content. Try a clearer image.");
     } finally {
@@ -134,6 +225,7 @@ export function AnalyzeScreen() {
       const context = buildBarcodeOnlyContext(result.barcodes);
       setImageContext(context);
       setText(context.combined_text);
+      setSafePreviewResult(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (/cancel/i.test(message)) return;
@@ -160,6 +252,23 @@ export function AnalyzeScreen() {
     if (selected.canceled || selected.assets.length === 0) return;
 
     await handleSelectedImage(selected.assets[0].uri);
+  }
+
+  async function checkLinkSafely() {
+    if (!previewContext || !previewKind) return;
+
+    setIsSafePreviewChecking(true);
+    setSafePreviewResult(null);
+    try {
+      const result = await checkSafeLinkPreview({
+        url: previewContext.url,
+        kind: previewKind,
+        source: previewContext.source,
+      });
+      setSafePreviewResult(result);
+    } finally {
+      setIsSafePreviewChecking(false);
+    }
   }
 
   return (
@@ -205,6 +314,7 @@ export function AnalyzeScreen() {
           onChangeText={(value) => {
             setText(value);
             setImageContext(null);
+            setSafePreviewResult(null);
           }}
           placeholder="OCR text will appear here, or paste/type a message"
           placeholderTextColor="#64748b"
@@ -224,6 +334,68 @@ export function AnalyzeScreen() {
             <Text style={styles.contextText}>
               URLs found: {imageContext.context_summary.url_count}
             </Text>
+          </View>
+        ) : null}
+
+        {shouldShowSafePreview && previewContext && previewKind ? (
+          <View style={sharedStyles.card}>
+            <Text style={sharedStyles.cardTitle}>
+              {previewKind === "qr" ? "QR Safe Preview" : "URL Safety Preview"}
+            </Text>
+            <Text style={styles.contextText}>
+              {previewKind === "qr"
+                ? "TrustShield found a QR link. You can check limited website information before analysis. This will not open the website."
+                : "TrustShield found a link in this message. You can check limited website information before analysis. This will not open the website."}
+            </Text>
+            <Text style={styles.contextText}>
+              Domain: {previewContext.domain ?? "Unknown"}
+            </Text>
+            <Text style={styles.contextText}>
+              Local check: {summarizeUrlContext(previewContext)}
+            </Text>
+            {getUrlRiskScore(previewContext) > 0 ? (
+              <Text style={styles.previewText}>Previewing highest-risk link.</Text>
+            ) : null}
+            <PrimaryButton
+              title={
+                isSafePreviewChecking
+                  ? "Checking..."
+                  : previewKind === "qr"
+                    ? "Check QR Safely"
+                    : "Check URL Safely"
+              }
+              onPress={checkLinkSafely}
+              disabled={isSafePreviewChecking}
+              variant="secondary"
+            />
+            {isSafePreviewChecking ? (
+              <Text style={styles.previewText}>Checking limited public website info...</Text>
+            ) : null}
+            {safePreviewStatusText ? (
+              <Text style={safePreviewResult?.status === "no_internet" ? styles.previewWarning : styles.errorText}>
+                {safePreviewStatusText}
+              </Text>
+            ) : null}
+            {safePreviewResult?.status === "completed" ? (
+              <View style={styles.previewSummary}>
+                <Text style={styles.previewTitle}>Safety Preview completed</Text>
+                <Text style={styles.previewText}>
+                  Domain: {safePreviewResult.domain ?? previewContext.domain ?? "Unknown"}
+                </Text>
+                {safePreviewResult.page_title || safePreviewResult.og_title ? (
+                  <Text style={styles.previewText}>
+                    Page title: {safePreviewResult.og_title || safePreviewResult.page_title}
+                  </Text>
+                ) : null}
+                <Text style={styles.previewText}>
+                  Redirects: {safePreviewResult.redirect_count ?? 0}
+                </Text>
+                <Text style={styles.previewText}>
+                  Status: {safePreviewResult.http_status ?? "Unknown"}
+                </Text>
+                <Text style={styles.previewReady}>Now tap Analyze with TrustShield AI.</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -287,6 +459,38 @@ const styles = StyleSheet.create({
     color: "#334155",
     fontSize: 16,
     fontWeight: "700",
+    lineHeight: 23,
+  },
+  previewSummary: {
+    backgroundColor: "#f8fafc",
+    borderColor: "#e2e8f0",
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 6,
+    padding: 12,
+  },
+  previewTitle: {
+    color: "#0f172a",
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 24,
+  },
+  previewText: {
+    color: "#334155",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 23,
+  },
+  previewWarning: {
+    color: "#a16207",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 23,
+  },
+  previewReady: {
+    color: "#0f766e",
+    fontSize: 16,
+    fontWeight: "900",
     lineHeight: 23,
   },
 });

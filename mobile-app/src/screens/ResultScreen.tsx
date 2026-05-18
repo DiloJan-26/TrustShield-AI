@@ -68,6 +68,20 @@ function buildExplanationText(result: TrustShieldResult, handlingText: string): 
   return limitWords(explanation, 40);
 }
 
+function getSafePreview(result: TrustShieldResult) {
+  return result.safe_link_previews?.[0] ?? result.qr_safe_preview?.[0] ?? null;
+}
+
+function getSafePreviewLabel(result: TrustShieldResult): string {
+  const preview = getSafePreview(result);
+  if (!preview) return "Not checked";
+  if (preview.status === "completed") return preview.kind === "qr" ? "QR checked" : "URL checked";
+  if (preview.status === "no_internet") return "No internet";
+  if (preview.status === "blocked") return "Blocked";
+  if (preview.status === "failed") return "Failed";
+  return "Not checked";
+}
+
 export function ResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; result?: string; signals?: string }>();
@@ -85,6 +99,7 @@ export function ResultScreen() {
   const evidence = result.evidence.length > 0 ? result.evidence.slice(0, 4) : signalResult.evidence.slice(0, 4);
   const handlingText = buildHandlingText(result);
   const explanation = buildExplanationText(result, handlingText);
+  const safePreview = getSafePreview(result);
 
   return (
     <SafeAreaView style={sharedStyles.screen}>
@@ -124,6 +139,22 @@ export function ResultScreen() {
               <Text style={styles.detailValue}>{(result.latency_ms / 1000).toFixed(1)} seconds</Text>
             </View>
           ) : null}
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Safety Preview</Text>
+            <Text style={styles.detailValue}>{getSafePreviewLabel(result)}</Text>
+            {safePreview?.status === "completed" ? (
+              <Text style={styles.detailNote}>
+                Preview used: Yes
+                {safePreview.domain ? `\nDomain: ${safePreview.domain}` : ""}
+                {safePreview.page_title || safePreview.og_title
+                  ? `\nPage title: ${safePreview.og_title || safePreview.page_title}`
+                  : ""}
+                {typeof safePreview.redirect_count === "number"
+                  ? `\nRedirects: ${safePreview.redirect_count}`
+                  : ""}
+              </Text>
+            ) : null}
+          </View>
           <Text style={styles.privacy}>Privacy: On-device / No cloud AI</Text>
         </View>
 
@@ -190,5 +221,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "800",
     lineHeight: 24,
+  },
+  detailNote: {
+    color: "#475569",
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 22,
   },
 });
