@@ -78,6 +78,9 @@ temp/**
 .cache
 .cache/
 .cache/**
+eas-inspect-archive
+eas-inspect-archive/
+eas-inspect-archive/**
 
 # Local editor files
 .vscode

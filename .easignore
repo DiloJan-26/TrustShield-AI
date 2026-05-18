@@ -1,0 +1,122 @@
+# EAS archives from the repository root for this workspace.
+# Keep the mobile app source/config, but exclude local-only folders and build outputs.
+
+# Non-app workspace folders
+dataset
+dataset/**
+demo
+demo/**
+evaluation
+evaluation/**
+fine-tuning
+fine-tuning/**
+website
+website/**
+
+# Root docs/tasks not needed for APK build
+*.task*.md
+0.overallworkflow.md
+1.task1.md
+2.task2.md
+3.task3.md
+4.task4.md
+trustshield_dataset_final_validation_summary_v1.json
+
+# Dependencies / package manager cache
+node_modules
+node_modules/**
+mobile-app/node_modules
+mobile-app/node_modules/**
+.npm
+.npm/**
+.yarn
+.yarn/**
+.pnpm-store
+.pnpm-store/**
+
+# Expo / Metro
+.expo
+.expo/**
+.expo-shared
+.expo-shared/**
+mobile-app/.expo
+mobile-app/.expo/**
+mobile-app/.expo-shared
+mobile-app/.expo-shared/**
+dist
+dist/**
+web-build
+web-build/**
+mobile-app/dist
+mobile-app/dist/**
+mobile-app/web-build
+mobile-app/web-build/**
+
+# Android build outputs and caches
+mobile-app/android/.gradle
+mobile-app/android/.gradle/**
+mobile-app/android/build
+mobile-app/android/build/**
+mobile-app/android/app/build
+mobile-app/android/app/build/**
+mobile-app/android/app/.cxx
+mobile-app/android/app/.cxx/**
+mobile-app/android/app/intermediates
+mobile-app/android/app/intermediates/**
+**/.gradle
+**/.gradle/**
+**/.cxx
+**/.cxx/**
+**/build/intermediates/**
+**/build/outputs/**
+**/build/tmp/**
+
+# EAS inspect output
+mobile-app/eas-inspect-archive
+mobile-app/eas-inspect-archive/**
+eas-inspect-archive
+eas-inspect-archive/**
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Local model files - DO NOT upload or bundle model
+*.litertlm
+**/*.litertlm
+*.gguf
+**/*.gguf
+mobile-app/models/*.litertlm
+mobile-app/android/app/src/main/assets/*.litertlm
+mobile-app/android/app/src/main/res/raw/*.litertlm
+
+# Temporary / cache files
+tmp
+tmp/**
+temp
+temp/**
+.cache
+.cache/**
+
+# Local editor files
+.vscode
+.vscode/**
+mobile-app/.vscode
+mobile-app/.vscode/**
+
+# Local build archives / exported artifacts
+*.apk
+*.aab
+*.apks
+*.zip
+
+# Test/output folders if they are not required for app runtime
+coverage
+coverage/**
