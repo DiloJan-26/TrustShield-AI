@@ -50,19 +50,35 @@ Safe Link Preview is optional and user-triggered. It checks limited public websi
 
 ## Runtime Architecture
 
-```text
-User input
-  -> Paste text / Pick screenshot / Detect QR / Android share image
-  -> Local OCR and QR/barcode extraction
-  -> URL source separation
-  -> Local URL intelligence
-  -> Optional Safe Link Preview
-  -> Scam Signal Extractor
-  -> Local Scam Playbook retrieval
-  -> Compact Gemma 4 E2B prompt
-  -> JSON parser and safety normalization
-  -> Elder-friendly Result screen
-  -> Scam State Report when risky
+```mermaid
+flowchart TD
+    A[User input] --> B{Input type}
+    B --> C[Paste text]
+    B --> D[Pick screenshot]
+    B --> E[Detect QR]
+    B --> F[Android share image]
+
+    C --> G[Unified local analysis input]
+    D --> H[Local OCR and QR/barcode extraction]
+    E --> H
+    F --> H
+    H --> G
+
+    G --> I[URL source separation]
+    I --> J[Local URL intelligence]
+    J --> K{User taps Safe Preview?}
+    K -->|Optional| L[QR Safe Preview / URL Safety Preview]
+    K -->|Skip| M[Scam Signal Extractor]
+    L --> M
+
+    M --> N[Local Scam Playbook retrieval]
+    N --> O[Compact Gemma 4 E2B prompt]
+    O --> P[On-device Gemma reasoning]
+    P --> Q[JSON parser and safety normalization]
+    Q --> R[Elder-friendly Result screen]
+    R --> S{Risky?}
+    S -->|Yes| T[Scam State Report]
+    S -->|No| U[Analyze another message]
 ```
 
 ### Reasoning Layers
@@ -135,10 +151,6 @@ TrustShield-AI/
     models/                      Model setup documentation only
     eas.json                     EAS APK build profile
     .easignore                   Mobile-app upload exclusions
-  dataset/                       Dataset/research assets, not runtime app upload
-  evaluation/                    Evaluation notes/results
-  fine-tuning/                   Research/fine-tuning workspace
-  website/                       Project website assets
 ```
 
 
