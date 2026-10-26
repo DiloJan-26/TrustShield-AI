@@ -1,257 +1,150 @@
 # TrustShield AI
 
-**One Shield Before the Scam**
+### One Shield Before the Scam
 
-TrustShield AI is a privacy-first Android safety app that helps older adults and low-digital-literacy users understand suspicious messages, links, QR codes, and screenshots before they act on them. The app combines local OCR, QR/barcode extraction, deterministic scam signals, a curated Sri Lanka-focused scam playbook, and on-device Gemma 4 E2B reasoning.
+TrustShield AI helps people assess suspicious messages, screenshots, links, and QR codes **before** they click, share a code, install an app, or pay. The Android app combines local extraction, explicit scam evidence, and on-device Gemma 4 E2B reasoning to return a risk level, a plain-language explanation, and a safer next action.
 
-The product goal is simple: explain scam risk in plain language before the user clicks a link, shares a code, installs an app, or sends money.
+[Watch the demo](https://youtu.be/okeV1MDltAQ) · [Android APK](https://expo.dev/accounts/djexpo119/projects/trustshield-ai/builds/ac70514d-dbc4-454f-aed2-f14350e26c1b) · [Source repository](https://github.com/DiloJan-26/TrustShield-AI)
 
-## Product Scope
+## The problem
 
-TrustShield AI focuses on common scam interactions seen in SMS, WhatsApp, email screenshots, browser pages, QR/payment screens, and shared images.
+A scam can look like a delivery notice, bank alert, mobile-data offer, job opportunity, or QR payment. Its danger often lies in a **combination** of signals: apparent authority, urgency, an unfamiliar destination, and a request for money or credentials. A risk label alone does not tell someone what the message is trying to make them do.
 
-The app can:
+TrustShield is designed for older adults and other users who need to answer three questions quickly:
 
-- Analyze pasted message text.
-- Pick a screenshot from the gallery and extract visible text locally.
-- Detect QR/barcode content from screenshots.
-- Scan live QR/barcodes.
-- Receive shared images from the Android share sheet.
-- Separate visible-text URLs from QR/barcode URLs.
-- Run optional QR Safe Preview / URL Safety Preview without opening the website.
-- Detect scam signals such as OTP requests, fake bank warnings, delivery fees, fake rewards, SIM verification, KYC updates, job/task scams, loan fees, crypto/investment claims, APK install requests, government/tax/fine threats, and marketplace advance-payment scams.
-- Retrieve top matching local scam patterns from a compact playbook.
-- Run local Gemma 4 E2B reasoning through LiteRT-LM.
-- Show an elder-friendly result with risk, confidence, explanation, evidence, safest action, model/privacy details, and a Scam State Report flow.
+- **Should I stop, verify, or proceed carefully?**
+- **Which clues led to that assessment?**
+- **What should I do next?**
 
-The app does not:
+Users provide text directly, choose a screenshot, scan a live QR/barcode, or share an image through the Android share sheet. No account integration or automatic message capture is required.
 
-- Use cloud AI.
-- Use Gemini API, OpenAI API, or a server fallback.
-- Bundle the Gemma model inside the APK.
-- Use Tesseract.
-- Automatically capture screenshots.
-- Use AccessibilityService or MediaProjection.
-- Directly integrate with WhatsApp/Gmail account data.
-
-## Privacy And Safety
-
-TrustShield AI is designed for local-first safety.
-
-- OCR runs on-device with Google ML Kit Text Recognition.
-- QR/barcode extraction runs on-device with ML Kit / Google Code Scanner.
-- Scam signal extraction runs locally in TypeScript.
-- Scam playbook retrieval is local and offline.
-- Gemma 4 E2B runs locally on the Android device through LiteRT-LM.
-- The model file is external and must be copied manually after APK installation.
-- The APK does not include `gemma-4-E2B-it.litertlm`.
-
-Safe Link Preview is optional and user-triggered. It checks limited public website metadata without opening a browser, WebView, JavaScript, forms, or downloads. Unsafe schemes and local/private targets are blocked.
-
-## Runtime Architecture
+## How the analysis works
 
 ```mermaid
 flowchart TD
-    A[User input] --> B{Input type}
-    B --> C[Paste text]
-    B --> D[Pick screenshot]
-    B --> E[Detect QR]
-    B --> F[Android share image]
+    A["Text · screenshot · shared image · live QR"] --> B
+    subgraph Local["On-device analysis"]
+        B["1 · Extract visible text and QR data"] --> C["2 · Separate URL sources"]
+        C --> D["3 · Extract scam signals and base risk"]
+        D --> E["4 · Retrieve relevant local playbook patterns"]
+        E --> F["5 · Build a bounded evidence prompt"]
+        F --> G["6 · Gemma 4 E2B via LiteRT-LM"]
+        G --> H["7 · Validate JSON and enforce safety"]
+        D --> J["Local safety fallback"]
+        H --> I["Risk · evidence · explanation · safe action"]
+        J --> I
+    end
+    C -. "User requests Safe Preview" .-> P["Limited public website metadata"]
+    P -. "Additional evidence" .-> D
+```
 
-    C --> G[Unified local analysis input]
-    D --> H[Local OCR and QR/barcode extraction]
-    E --> H
+The core path works offline. **Safe Preview is optional:** it makes a limited request to the selected website only when the user asks for it.
+
+### Reasoning layers
+
+**1. Extraction layer.** Kotlin modules use Google ML Kit to read visible Latin-script text and decode QR/barcode content from images; Google Code Scanner handles live scans. Shared images are copied into app-controlled cache. The analysis context preserves whether a URL appeared in visible text, a QR code, or manually entered text. OCR does not call a cloud service.
+
+**2. Signal layer.** [`scamSignalExtractor.ts`](mobile-app/src/services/scamSignalExtractor.ts) turns the extracted content into observable clues, evidence, a scam-type hint, and a conservative base risk. It detects credential requests, suspicious links, brand impersonation, urgency, fees, QR payments, APK installation, and more. Combinations matter: a bank name alone is different from a bank warning demanding an OTP.
+
+**3. Playbook layer.** [`scamPlaybook.ts`](mobile-app/src/services/scamPlaybook.ts) contains curated scam and safe-notice patterns relevant to Sri Lanka. Its local retriever scores signal overlap, keywords, URLs, scam-type hints, and risk. Up to three matching patterns enter the model context. This is a compact retrieval-augmented generation layer without a remote database or embedding service.
+
+**4. Model layer.** Base Gemma 4 E2B runs through LiteRT-LM on the Android GPU. The prompt contains only the evidence needed for this decision:
+
+- trimmed message/OCR text and up to three detected URLs with source context;
+- up to eight signals, four evidence items, and the rule-risk hint;
+- the scam-type hint and up to three compact playbook matches;
+- up to two optional Safe Preview results.
+
+The full playbook and any training dataset stay out of the prompt. The current implementation limits message text to 360 characters, uses temperature `0.1`, and requests up to 96 output tokens. Gemma produces a short structured judgment: risk, confidence, category, explanation, and safest action.
+
+```json
+{"r":"dangerous","c":0.82,"t":"delivery_fee_scam","x":"The message asks for a fee to release a parcel.","a":"Check the delivery in the courier's official app."}
+```
+
+Here `r` is risk, `c` is confidence, `t` is the category, `x` explains the apparent intent, and `a` is the next action. The parser turns this compact response into the fuller result shown in the app.
+
+**5. Parser and fallback layer.** [`jsonModelParser.ts`](mobile-app/src/services/model/jsonModelParser.ts) recovers JSON where possible, validates fields, calibrates confidence, and filters unsafe advice. When a low-confidence model answer conflicts with strong dangerous evidence, it can use a conservative local result. Missing or failed model inference also falls back to local analysis. The result identifies whether base Gemma, mock mode, or local fallback was used.
+
+```mermaid
+flowchart TD
+    A["Gemma response"] --> B{"Usable JSON?"}
+    B -- No --> F["Local safety fallback"]
+    B -- Yes --> C["Normalize fields and confidence"]
+    C --> D{"Unsafe advice or conflicting risk?"}
+    D -- Yes --> E["Replace unsafe advice or apply evidence-backed override"]
+    D -- No --> G["Accept validated result"]
+    E --> H["Display result with evidence and safe action"]
     F --> H
-    H --> G
-
-    G --> I[URL source separation]
-    I --> J[Local URL intelligence]
-    J --> K{User taps Safe Preview?}
-    K -->|Optional| L[QR Safe Preview / URL Safety Preview]
-    K -->|Skip| M[Scam Signal Extractor]
-    L --> M
-
-    M --> N[Local Scam Playbook retrieval]
-    N --> O[Compact Gemma 4 E2B prompt]
-    O --> P[On-device Gemma reasoning]
-    P --> Q[JSON parser and safety normalization]
-    Q --> R[Elder-friendly Result screen]
-    R --> S{Risky?}
-    S -->|Yes| T[Scam State Report]
-    S -->|No| U[Analyze another message]
+    G --> H
 ```
 
-### Reasoning Layers
+The safety layer filters instructions to click unknown links, share OTP/PIN/password/CVV, install message-supplied APKs, send money, pay first, or reply with verification codes.
 
-**Extraction layer**
+## A concrete example
 
-Native Android modules extract visible Latin-script text, QR content, barcode values, and shared-image content. This layer does not call cloud OCR.
-
-**Signal layer**
-
-`scamSignalExtractor.ts` turns observable clues into structured signals and evidence. It also computes a conservative base risk before model reasoning.
-
-**Playbook layer**
-
-`scamPlaybook.ts` stores curated scam patterns. The local retriever selects only the top matching patterns, so the Gemma prompt stays small and fast.
-
-**Model layer**
-
-Gemma receives compact context only:
-
-- Trimmed OCR/QR text
-- Top detected URLs
-- Top signals
-- Rule risk hint
-- Local evidence
-- Scam type hint
-- Top 1-3 compact playbook matches
-- Optional safe preview metadata
-
-The app does not send the full playbook or full datasets to the model.
-
-**Parser and fallback layer**
-
-The parser normalizes model JSON, calibrates confidence, filters unsafe advice, and applies conservative fallback behavior when model output is missing, malformed, or unsafe.
-
-TrustShield never advises users to click unknown links, share OTP/PIN/password/CVV, install APKs from messages, send money, pay first, or reply with verification codes.
-
-## Main App Flow
+Consider a screenshot claiming that a parcel is held until a delivery fee is paid at an unfamiliar URL. The app extracts the screenshot text, tags the visible URL, identifies the delivery and payment signals, and retrieves a delivery-fee scam pattern. Gemma then explains the apparent request using that evidence; the parser checks the response before the result is shown.
 
 ```text
-Home
-  -> Analyze Message
-  -> Detect QR / Pick Screenshot / Paste Text / Android Share Image
-  -> OCR + QR extraction
-  -> URL source separation
-  -> Local URL intelligence
-  -> Optional QR Safe Preview / URL Safety Preview
-  -> Signal extraction
-  -> Local playbook retrieval
-  -> Local Gemma reasoning
-  -> Result
-  -> Scam State Report if risky
+Input       Parcel held. Pay the delivery fee at an unfamiliar link.
+Evidence    Delivery context + payment request + unverified URL
+Playbook    Delivery-fee pattern
+Result      Risk, reasons, and a prompt to verify through the courier's official channel
 ```
 
-## Repository Structure
+This illustrates the analysis path; it is not an accuracy measurement or a verbatim model trace.
 
-```text
-TrustShield-AI/
-  mobile-app/
-    app/                         Expo Router routes
-    src/
-      components/                Shared UI components
-      native/                    TypeScript native-module bridges
-      screens/                   Home, Analyze, Result, Settings, Report, Help
-      services/                  OCR/QR context, signals, playbook, URL safety, model client
-      types/                     Shared analysis/result types
-    android/                     Native Android project and Kotlin modules
-    assets/                      Icons and splash assets
-    docs/                        Architecture and safety docs
-    models/                      Model setup documentation only
-    eas.json                     EAS APK build profile
-    .easignore                   Mobile-app upload exclusions
-```
+## Image, QR, and link safety
 
+Screenshots can contain visible text **and** a QR code with a different destination. TrustShield processes both and keeps their URL sources separate. Local URL intelligence checks protocols, domains, shorteners, suspicious top-level domains, brand-impersonation hints, and risky path terms such as `verify`, `claim`, `payment`, and `login`.
 
-Install dependencies:
+When explicitly requested, QR Safe Preview or URL Safety Preview adds bounded public metadata: final URL, redirect count, HTTP status, content type, title, and description. It accepts HTTP/HTTPS only, blocks local and private targets, follows at most two redirects, uses a five-second timeout, and reads at most 100 KiB of HTML. It does not render a WebView, execute JavaScript, submit forms, or install files.
+
+**Privacy boundary:** messages, screenshots, extracted text, prompts, and model responses are processed locally. A Safe Preview request contacts the selected public website, so that optional URL check needs network access. No hosted AI or TrustShield analysis server receives the message.
+
+## Android implementation and product experience
+
+The app uses an Expo custom development client because its OCR, barcode, share-intent, notification, and Gemma features require native Kotlin modules. The Gemma bridge verifies the external model file, initializes a reusable LiteRT-LM GPU engine, prevents concurrent generation, closes one-shot conversations, and reports inference latency. The roughly 2.6 GB model is copied to app-readable device storage after installation; it is excluded from Git and the APK.
+
+The result screen is deliberately direct: **risk and confidence → what the message is saying → evidence found → how to handle it**. It also shows model/privacy details and optional preview status. Risky results can open a Scam State screen, while the Scam Help & Safety page explains what evidence to save and how to verify through official channels.
+
+Current scam coverage includes bank OTP phishing, KYC and SIM verification, fake rewards, delivery and customs fees, task jobs, loan fees, marketplace deposits, investment promises, QR payment requests, and APK malware. The local rules also recognize ordinary transaction and delivery notices so benign examples can remain distinct from scams.
+
+## Technology stack
+
+| Area | Implementation |
+| --- | --- |
+| Mobile app | React Native 0.81, Expo 54, Expo Router 6, React 19, TypeScript 5.9 |
+| Android integration | Kotlin, React Native NativeModules, intents, app cache, notifications, Gradle |
+| On-device model | Base Gemma 4 E2B instruction model, LiteRT-LM 0.11, GPU backend |
+| Extraction | Google ML Kit Text Recognition and Barcode Scanning, Google Code Scanner |
+| Reasoning | Deterministic signals, local playbook retrieval, bounded prompts, structured JSON parsing |
+| Delivery and checks | EAS internal APK, TypeScript compiler, ESLint, Gradle |
+
+## Validation and current limits
+
+The Android prototype has been exercised on a physical Redmi Note 10 Pro. [Manual base-model notes](evaluation/base_gemma_v1_notes.md) record five scenarios: a bank OTP request, gift-card survey, delivery fee, job registration fee, and ordinary account credit. The notes also record screenshot OCR, signal display, result navigation, and latency display. A separate offline check records Gemma initialization and analysis with Wi-Fi and mobile data disabled.
+
+These are focused acceptance checks. The project does not yet claim production accuracy or a representative benchmark. Next work includes automated per-class evaluation and false-negative review, multilingual OCR and evaluation for Sinhala and Tamil, adversarial link and OCR tests, and performance measurements across more devices. The current app focuses on English and Latin-script Sri Lankan messages; it analyzes content supplied by the user and does not read private messaging accounts or capture screenshots in the background.
+
+## Run locally
+
+An Android SDK, compatible JDK, Node.js/npm, and a physical Android device with USB debugging are needed for the native app.
 
 ```powershell
+cd mobile-app
 npm install
-```
-
-Run Metro for a physical Android device over USB:
-
-```powershell
-npm run start:usb
-```
-
-If the custom dev client does not open automatically, press:
-
-```text
-a
-```
-
-Use native rebuild only after Android/Kotlin/Gradle/manifest/native-module changes:
-
-```powershell
 npm run android
 npm run start:usb
 ```
 
-JavaScript/TypeScript-only changes usually need only:
+The model is installed separately. Follow [model setup](mobile-app/models/README_MODEL_SETUP.md) to copy `gemma-4-E2B-it.litertlm` to the expected Android path, then initialize it in **Settings**. After native changes, rebuild the Android app. For TypeScript-only changes, `npm run start:usb` is usually sufficient.
 
 ```powershell
-npm run start:usb
-```
-
-## Validation
-
-Run before important builds:
-
-```powershell
+cd mobile-app
 npx tsc --noEmit
 npm run lint
 ```
 
-Native Kotlin validation, when native files change:
+More detail: [reasoning architecture](mobile-app/docs/TRUSTSHIELD_REASONING_ARCHITECTURE.md) · [Safe Link Preview](mobile-app/docs/SAFE_LINK_PREVIEW.md) · [QR Safe Preview](mobile-app/docs/QR_SAFE_PREVIEW.md) · [Scam Help & Safety](mobile-app/docs/SCAM_HELP_AND_SAFETY.md).
 
-```powershell
-cd TrustShield-AI\mobile-app\android
-.\gradlew.bat :app:compileDebugKotlin
-```
-
-
-Start a production-style internal APK build:
-
-```powershell
-cd TrustShield-AI\mobile-app
-eas build -p android --profile preview-apk
-```
-
-## Installing The APK
-
-After EAS Build finishes:
-
-1. Open the Expo build page.
-2. Click **Install** or download the APK from the build menu.
-3. On Android 8.0+ allow APK installation from the browser or file manager if prompted.
-4. Install the APK on the phone.[`Install APK`](https://expo.dev/accounts/djexpo119/projects/trustshield-ai/builds/ac70514d-dbc4-454f-aed2-f14350e26c1b)
-5. Copy the Gemma model manually after installation.
-
-## Gemma Model Setup
-
-The model is not committed, not uploaded to EAS, and not bundled inside the APK.
-
-Expected model file:
-
-```text
-gemma-4-E2B-it.litertlm
-```
-
-Expected app-readable phone path:
-
-```text
-/sdcard/Android/data/com.djexpo119.trustshieldai/files/models/gemma-4-E2B-it.litertlm
-```
-
-## Documentation
-
-Additional documentation:
-
-```text
-mobile-app/docs/TRUSTSHIELD_REASONING_ARCHITECTURE.md
-mobile-app/docs/SCAM_HELP_AND_SAFETY.md
-mobile-app/docs/SAFE_LINK_PREVIEW.md
-mobile-app/docs/QR_SAFE_PREVIEW.md
-mobile-app/models/README_MODEL_SETUP.md
-```
-
-## Production Notes
-
-- The app is intentionally local-first and privacy-preserving.
-- The APK requires the external Gemma model to be copied after installation for full local model reasoning.
-- Mock Safety Mode and Local Safety Fallback remain available when the model is not ready.
-- OCR support is currently focused on Latin-script text.
-- Official contact details and safety guidance should be rechecked before public release.
-- Scam pattern coverage should be evaluated against real Sri Lankan examples before final judging or deployment.
+---
